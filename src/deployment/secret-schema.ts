@@ -13,7 +13,8 @@ type SecretGate =
   | "linear-oauth"
   | "model-anthropic"
   | "model-openai"
-  | "model-openrouter";
+  | "model-openrouter"
+  | "model-google";
 
 export interface RuntimeSecretSpec {
   name: string;
@@ -29,6 +30,7 @@ export const CORE_SECRET_SPECS: readonly RuntimeSecretSpec[] = [
   { name: "OPENAI_API_KEY", requiredWhen: ["codex", "model-openai"] },
   { name: "ANTHROPIC_API_KEY", requiredWhen: "model-anthropic" },
   { name: "OPENROUTER_API_KEY", requiredWhen: "model-openrouter" },
+  { name: "GEMINI_API_KEY", requiredWhen: "model-google" },
   { name: "DATABASE_URL", requiredWhen: "postgres" },
   { name: "SPRITES_TOKEN", requiredWhen: "sprites" },
   { name: "FLY_API_TOKEN", requiredWhen: "fly-sandbox" },
@@ -53,6 +55,7 @@ const GATE_PREDICATES: Readonly<Record<SecretGate, (env: NodeJS.ProcessEnv) => b
   "model-anthropic": (env) => env.MODEL_PROVIDER?.trim() === "anthropic",
   "model-openai": (env) => env.MODEL_PROVIDER?.trim() === "openai",
   "model-openrouter": (env) => env.MODEL_PROVIDER?.trim() === "openrouter",
+  "model-google": (env) => env.MODEL_PROVIDER?.trim() === "google",
 };
 
 export function validateCoreSecretEnv(env: NodeJS.ProcessEnv): string[] {

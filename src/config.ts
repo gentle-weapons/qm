@@ -50,6 +50,7 @@ export interface Config {
   anthropicApiKey?: string;
   openaiApiKey?: string;
   openrouterApiKey?: string;
+  geminiApiKey?: string;
   modelProvider?: ModelProvider;
   providerBaseUrls: ProviderBaseUrls;
   piCaptureRequests: boolean;
@@ -157,6 +158,7 @@ export function providerKeysPresent(config: Config): ModelProviderAvailability {
     anthropic: Boolean(config.anthropicApiKey),
     openai: Boolean(config.openaiApiKey),
     openrouter: Boolean(config.openrouterApiKey),
+    google: Boolean(config.geminiApiKey),
   };
 }
 
@@ -730,6 +732,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ...(env.ANTHROPIC_API_KEY ? { anthropicApiKey: env.ANTHROPIC_API_KEY } : {}),
     ...(env.OPENAI_API_KEY ? { openaiApiKey: env.OPENAI_API_KEY } : {}),
     ...(env.OPENROUTER_API_KEY ? { openrouterApiKey: env.OPENROUTER_API_KEY } : {}),
+    ...(env.GEMINI_API_KEY || env.GOOGLE_API_KEY
+      ? { geminiApiKey: env.GEMINI_API_KEY || env.GOOGLE_API_KEY }
+      : {}),
     ...(modelProvider ? { modelProvider } : {}),
     providerBaseUrls,
     ...(env.ADMIN_GRANTS ? { adminGrants: env.ADMIN_GRANTS } : {}),

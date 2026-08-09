@@ -407,6 +407,7 @@ export function buildApp(
       ...(config.anthropicApiKey ? { anthropic: config.anthropicApiKey } : {}),
       ...(config.openaiApiKey ? { openai: config.openaiApiKey } : {}),
       ...(config.openrouterApiKey ? { openrouter: config.openrouterApiKey } : {}),
+      ...(config.geminiApiKey ? { google: config.geminiApiKey } : {}),
     },
   });
   const identity = createIdentityService(artifactMap<DeactivationRecord>("deactivated_principals"));

@@ -24,6 +24,11 @@ const VALIDATION_REQUESTS: Record<
     path: "/key",
     headers: (apiKey) => ({ authorization: `Bearer ${apiKey}` }),
   },
+  google: {
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    path: "/models",
+    headers: (apiKey) => ({ "x-goog-api-key": apiKey }),
+  },
 };
 
 function validationUrl(provider: ModelProvider): string {

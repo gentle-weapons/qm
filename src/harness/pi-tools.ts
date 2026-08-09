@@ -69,6 +69,7 @@ export interface ToolContextRef {
     source: string;
   }) => Promise<SecurityScreenVerdict | undefined>;
   toolApprovalGate?: (tool: string) => boolean;
+  stepToolNames?: string[];
 }
 
 function text(s: string) {
@@ -302,8 +303,11 @@ export function createPiTools(ref: ToolContextRef, opts?: PiToolsOptions): ToolD
     await ref.emit({ type, payload, scopeLabel });
   };
 
-  const recordCall = (callId: string, payload: Record<string, unknown>): Promise<void> =>
-    log("tool_call", { ...payload, callId });
+  const recordCall = (callId: string, payload: Record<string, unknown>): Promise<void> => {
+    const toolName = String(payload.tool ?? "");
+    if (toolName) (ref.stepToolNames ??= []).push(toolName);
+    return log("tool_call", { ...payload, callId });
+  };
 
   const recordResult = async <T extends { content: Array<{ type: string; text?: string }>; details?: unknown }>(
     callId: string,
@@ -457,6 +461,7 @@ export function createPiTools(ref: ToolContextRef, opts?: PiToolsOptions): ToolD
       scopeNote = { scope };
     }
     await recordCall(callId, { tool: "execute", command: params.command, ...scopeNote });
+    console.log(`[pi-tools:execute] start callId=${callId} cmd=${JSON.stringify(params.command)}`);
     try {
       const execOpts = {
         ...(params.timeout_seconds !== undefined ? { timeoutSeconds: params.timeout_seconds } : {}),
@@ -466,6 +471,7 @@ export function createPiTools(ref: ToolContextRef, opts?: PiToolsOptions): ToolD
         ...(ref.abortSignal ? { signal: ref.abortSignal } : {}),
       };
       const r = await tc.execute(params.command, Object.keys(execOpts).length ? execOpts : undefined);
+      console.log(`[pi-tools:execute] end callId=${callId} code=${r.code} stdoutLen=${r.stdout.length}`);
       const parts = [r.stdout, r.stderr ? `[stderr]\n${r.stderr}` : ""].filter(Boolean).join("\n");
       const reachedPrefix = r.reached ? `[ran on ${r.reached.label}'s computer]\n` : "";
       return recordResult(
@@ -482,6 +488,7 @@ export function createPiTools(ref: ToolContextRef, opts?: PiToolsOptions): ToolD
         },
       );
     } catch (e) {
+      console.log(`[pi-tools:execute] error callId=${callId} err=${errMessage(e)}`);
       if (e instanceof NeedsApproval) {
         ref.pendingApprovals?.push({
           command: e.command,
@@ -2043,6 +2050,19 @@ export function createPiTools(ref: ToolContextRef, opts?: PiToolsOptions): ToolD
               true,
             );
           }
+          const hasExecutionInStep = (ref.stepToolNames ?? []).some(
+            (name) => name !== surfaceName && name !== "surface" && name !== "slack" && name !== "stay_silent" && name !== "finish_silently",
+          );
+          if (hasExecutionInStep) {
+            return recordResult(
+              callId,
+              { tool: surfaceName, action: "post", error: "mixed_batch_post" },
+              text(
+                `[not sent] You called \`post\` in the same turn step as another tool. Inspect your tool results first, then call \`post\` in your next turn to send your response.`,
+              ),
+              true,
+            );
+          }
           const opts = {
             ...(params.ts !== undefined ? { ts: params.ts } : {}),
             ...(params.broadcast !== undefined ? { broadcast: params.broadcast } : {}),
@@ -2054,7 +2074,9 @@ export function createPiTools(ref: ToolContextRef, opts?: PiToolsOptions): ToolD
             text: capText(params.text),
             ...(params.files?.length ? { files: params.files } : {}),
           });
+          console.log(`[pi-tools:slack:post] start callId=${callId} text=${JSON.stringify(capText(params.text))}`);
           const r = await tc.post(params.text, opts, params.files);
+          console.log(`[pi-tools:slack:post] end callId=${callId} ok=${r.ok}`);
           return recordResult(
             callId,
             { tool: surfaceName, action: "post", ok: r.ok, ...(r.deliveryId ? { deliveryId: r.deliveryId } : {}) },

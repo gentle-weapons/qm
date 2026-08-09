@@ -86,6 +86,7 @@ export interface PiHarnessOptions {
   apiKey?: string;
   openaiApiKey?: string;
   openrouterApiKey?: string;
+  geminiApiKey?: string;
   resolveProviderKeys?: () => Promise<ProviderKeys>;
   tempDirPrefix?: string;
   captureRequests?: boolean;
@@ -111,6 +112,7 @@ export function piHarnessConfigOptions(config: Config): PiHarnessOptions {
     ...(config.anthropicApiKey ? { apiKey: config.anthropicApiKey } : {}),
     ...(config.openaiApiKey ? { openaiApiKey: config.openaiApiKey } : {}),
     ...(config.openrouterApiKey ? { openrouterApiKey: config.openrouterApiKey } : {}),
+    ...(config.geminiApiKey ? { geminiApiKey: config.geminiApiKey } : {}),
     captureRequests: config.piCaptureRequests,
     systemCacheSplit: config.piSystemCacheSplit,
     ...coreToolOptions(config),
@@ -976,7 +978,7 @@ export interface ProviderKeys {
   anthropic?: string;
   openai?: string;
   openrouter?: string;
-  /** Admin-registered custom providers, keyed by provider slug. */
+  google?: string;
   [provider: string]: string | undefined;
 }
 
@@ -1227,6 +1229,7 @@ export function createPiHarness(opts?: PiHarnessOptions): Harness {
         ...(opts?.apiKey ? { anthropic: opts.apiKey } : {}),
         ...(opts?.openaiApiKey ? { openai: opts.openaiApiKey } : {}),
         ...(opts?.openrouterApiKey ? { openrouter: opts.openrouterApiKey } : {}),
+        ...(opts?.geminiApiKey ? { google: opts.geminiApiKey } : {}),
       };
   const resolveProviderKeys = async (): Promise<ProviderKeys> => ({
     ...configuredProviderKeys,
@@ -1361,6 +1364,7 @@ export function createPiHarness(opts?: PiHarnessOptions): Harness {
       if (agent) {
         const prior = agent.onPayload;
         agent.onPayload = async (payload, model) => {
+          ref.stepToolNames = [];
           ref.modelCalls = (ref.modelCalls ?? 0) + 1;
           (ref.modelDispatch ??= []).push({
             start: Date.now(),
@@ -1405,6 +1409,12 @@ export function createPiHarness(opts?: PiHarnessOptions): Harness {
             const calls = ref.modelDispatch;
             const last = calls?.[calls.length - 1];
             if (last && last.first === undefined) last.first = Date.now();
+            const resContent = (response as unknown as { content?: Array<{ type?: string; name?: string }> })?.content;
+            if (Array.isArray(resContent)) {
+              ref.stepToolNames = resContent
+                .filter((item) => item.type === "tool_use" && typeof item.name === "string")
+                .map((item) => item.name!);
+            }
           } catch (e) {
             swallow("pi: model dispatch capture", e);
           }

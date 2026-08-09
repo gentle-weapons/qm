@@ -38,6 +38,7 @@ function start(
       anthropic: Boolean(config.anthropicApiKey),
       openai: Boolean(config.openaiApiKey),
       openrouter: Boolean(config.openrouterApiKey),
+      google: Boolean(config.geminiApiKey),
     },
     admin: built.admin,
     auditLog: built.auditLog,

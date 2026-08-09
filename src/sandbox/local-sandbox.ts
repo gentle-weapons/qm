@@ -110,7 +110,9 @@ export function createLocalSandbox(workspace: WorkspaceStore, opts: LocalSandbox
       const version = await dexec(["version"], 15_000);
       if (version.code !== 0) {
         preflightDone = undefined;
-        throw new Error("SANDBOX_BACKEND=local requires a running Docker daemon (is Docker Desktop running?)");
+        throw new Error(
+          `SANDBOX_BACKEND=local requires a running Docker daemon (is Docker Desktop running?) [code=${version.code} stderr=${JSON.stringify(version.stderr)}]`,
+        );
       }
       const img = await dexec([
         "image",

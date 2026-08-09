@@ -400,7 +400,7 @@ test("MODEL_PROVIDER is refused when the harness can never run that vendor's mod
 test("baseModelProviders constrains the base model only when a provider is declared", () => {
   assert.deepEqual(
     baseModelProviders(loadConfig({ MODEL_PROVIDER: "openrouter", OPENROUTER_API_KEY: "k", ANTHROPIC_API_KEY: "k" })),
-    { anthropic: false, openai: false, openrouter: true },
+    { anthropic: false, openai: false, openrouter: true, google: false },
     "the declaration outranks a stray key from another vendor",
   );
   assert.equal(

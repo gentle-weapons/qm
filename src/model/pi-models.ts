@@ -11,7 +11,7 @@ export const THINKING_LEVELS = ["auto", "low", "medium", "high", "xhigh", "max",
 export const HARNESS_IDS = ["pi", "opencode", "codex", "claude", "mock"] as const;
 export type HarnessId = (typeof HARNESS_IDS)[number];
 
-export const MODEL_PROVIDERS = ["anthropic", "openai", "openrouter"] as const;
+export const MODEL_PROVIDERS = ["anthropic", "openai", "openrouter", "google"] as const;
 export type ModelProvider = (typeof MODEL_PROVIDERS)[number];
 
 export function isModelProvider(value: unknown): value is ModelProvider {
@@ -89,6 +89,21 @@ export const MODEL_REGISTRY: readonly ModelEntry[] = [
     clone: { ...GPT_56_CLONE, input: 1, output: 6 },
   },
   { id: "openrouter/auto", name: "OpenRouter Auto", fastMode: false, webui: true, base: true },
+  {
+    id: "gemini-3.6-flash",
+    name: "Gemini Flash 3.6",
+    fastMode: true,
+    webui: true,
+    base: true,
+    clone: {
+      template: "gemini-2.0-flash",
+      input: 0.1,
+      output: 0.4,
+      contextWindow: 1_048_576,
+      maxTokens: 8192,
+    },
+  },
+  { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", fastMode: true, webui: true, base: true },
   { id: "claude-opus-4-7", name: "Claude Opus 4.7", fastMode: true, webui: false, base: false },
   { id: "claude-opus-4-6", name: "Claude Opus 4.6", fastMode: true, webui: false, base: false },
 ];
@@ -202,6 +217,7 @@ export interface ModelProviderAvailability {
   anthropic: boolean;
   openai: boolean;
   openrouter: boolean;
+  google: boolean;
 }
 
 export function modelServiceable(id: string, providers: ModelProviderAvailability): boolean {
@@ -211,6 +227,7 @@ export function modelServiceable(id: string, providers: ModelProviderAvailabilit
   if (provider === "openai") return providers.openai;
   if (provider === "anthropic") return providers.anthropic;
   if (provider === "openrouter") return providers.openrouter;
+  if (provider === "google") return providers.google;
   return true;
 }
 
@@ -218,7 +235,12 @@ export function serviceableModelIds(ids: readonly string[], providers: ModelProv
   return ids.filter((id) => modelServiceable(id, providers));
 }
 
-export const ALL_PROVIDERS_AVAILABLE: ModelProviderAvailability = { anthropic: true, openai: true, openrouter: true };
+export const ALL_PROVIDERS_AVAILABLE: ModelProviderAvailability = {
+  anthropic: true,
+  openai: true,
+  openrouter: true,
+  google: true,
+};
 
 export function modelProviderAvailabilityFor(
   harness: string,
@@ -232,7 +254,7 @@ export function modelProviderAvailabilityFor(
 }
 
 export function onlyProvider(provider: ModelProvider): ModelProviderAvailability {
-  return { anthropic: false, openai: false, openrouter: false, [provider]: true };
+  return { anthropic: false, openai: false, openrouter: false, google: false, [provider]: true };
 }
 
 export function defaultModelForProvider(harness: string, provider: ModelProvider): string | undefined {
