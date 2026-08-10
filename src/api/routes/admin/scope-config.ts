@@ -265,7 +265,11 @@ export async function getScopeConfig(ctx: ApiCtx): Promise<void> {
     soulVersion: deps.config.soulVersion(targetScope),
     soulHistory: deps.config.soulHistory(targetScope),
     directoryMembers: parseScopeId(targetScope).kind === "org" ? ((await deps.directory?.list()) ?? []) : [],
-    baseModelDefault: defaultModelForHarness(deps.harnessId ?? "pi", deps.baseModelDefault),
+    baseModelDefault: defaultModelForHarness(
+      deps.harnessId ?? "pi",
+      deps.baseModelDefault,
+      providersFor(deps.harnessId ?? "pi"),
+    ),
     baseModelOptions: modelsFor(deps.harnessId ?? "pi"),
     harnessDefault: deps.harnessId ?? "pi",
     harnessOptions: HARNESS_IDS.filter((id) => id !== "mock"),

@@ -6,6 +6,7 @@ import {
   defaultModelForHarness,
   isHarnessId,
   modelProviderAvailabilityFor,
+  modelServiceable,
   modelSupportedByHarness,
   resolveModel,
   serviceableModelIds,
@@ -1044,9 +1045,9 @@ async function getSurfaceConfig(ctx: ApiCtx): Promise<void> {
   });
 }
 
-function runtimeFallback(ctx: ApiCtx): { harnessId: HarnessId; modelId: string } {
+function runtimeFallback(ctx: ApiCtx, providers?: ModelProviderAvailability): { harnessId: HarnessId; modelId: string } {
   const harnessId = isHarnessId(ctx.deps.harnessId) ? ctx.deps.harnessId : "pi";
-  return { harnessId, modelId: defaultModelForHarness(harnessId, ctx.deps.baseModelDefault) };
+  return { harnessId, modelId: defaultModelForHarness(harnessId, ctx.deps.baseModelDefault, providers) };
 }
 
 async function runtimeTarget(ctx: ApiCtx): Promise<{ actorId: string; scope: ScopeId } | null> {
@@ -1069,17 +1070,23 @@ async function runtimeTarget(ctx: ApiCtx): Promise<{ actorId: string; scope: Sco
 
 async function runtimeConfigBody(ctx: ApiCtx, scope: ScopeId): Promise<Record<string, unknown>> {
   const config = ctx.deps.config!;
-  const fallback = runtimeFallback(ctx);
+  const configuredKeys = ctx.deps.providerKeys ?? ALL_PROVIDERS_AVAILABLE;
+  const managedKeys = ctx.deps.modelCredentials ? await ctx.deps.modelCredentials.availability() : configuredKeys;
+  const providersFor = (harnessId: string) => modelProviderAvailabilityFor(harnessId, configuredKeys, managedKeys);
+  const fallbackHarness = isHarnessId(ctx.deps.harnessId) ? ctx.deps.harnessId : "pi";
+  const fallback = runtimeFallback(ctx, providersFor(fallbackHarness));
   const org = orgScope(ctx.deps);
   const approvedHarnesses = ((await config.getApprovedHarnessesDurable()) ?? [fallback.harnessId]).filter(isHarnessId);
   const firstApproved = approvedHarnesses[0] ?? fallback.harnessId;
   const safeFallback =
-    approvedHarnesses.includes(fallback.harnessId) && modelSupportedByHarness(fallback.modelId, fallback.harnessId)
+    approvedHarnesses.includes(fallback.harnessId) &&
+    modelSupportedByHarness(fallback.modelId, fallback.harnessId) &&
+    modelServiceable(fallback.modelId, providersFor(fallback.harnessId))
       ? fallback
-      : { harnessId: firstApproved, modelId: defaultModelForHarness(firstApproved, fallback.modelId) };
-  const configuredKeys = ctx.deps.providerKeys ?? ALL_PROVIDERS_AVAILABLE;
-  const managedKeys = ctx.deps.modelCredentials ? await ctx.deps.modelCredentials.availability() : configuredKeys;
-  const providersFor = (harnessId: string) => modelProviderAvailabilityFor(harnessId, configuredKeys, managedKeys);
+      : {
+          harnessId: firstApproved,
+          modelId: defaultModelForHarness(firstApproved, fallback.modelId, providersFor(firstApproved)),
+        };
   const catalog =
     ctx.deps.modelCredentials && managedKeys.openrouter
       ? await selectableModelCatalog(ctx.deps.modelCredentialFetch)
@@ -1097,7 +1104,8 @@ async function runtimeConfigBody(ctx: ApiCtx, scope: ScopeId): Promise<Record<st
     orgStored &&
     isHarnessId(orgStored.harnessId) &&
     approvedHarnesses.includes(orgStored.harnessId) &&
-    modelSupportedByHarness(orgStored.modelId, orgStored.harnessId)
+    modelSupportedByHarness(orgStored.modelId, orgStored.harnessId) &&
+    modelServiceable(orgStored.modelId, providersFor(orgStored.harnessId))
   ) {
     orgDefault = {
       harnessId: orgStored.harnessId,
@@ -1109,7 +1117,8 @@ async function runtimeConfigBody(ctx: ApiCtx, scope: ScopeId): Promise<Record<st
   } else if (
     orgLegacyModel &&
     approvedHarnesses.includes(fallback.harnessId) &&
-    modelSupportedByHarness(orgLegacyModel, fallback.harnessId)
+    modelSupportedByHarness(orgLegacyModel, fallback.harnessId) &&
+    modelServiceable(orgLegacyModel, providersFor(fallback.harnessId))
   ) {
     orgDefault = { harnessId: fallback.harnessId, modelId: orgLegacyModel, revision: 0 };
   }
@@ -1126,7 +1135,8 @@ async function runtimeConfigBody(ctx: ApiCtx, scope: ScopeId): Promise<Record<st
     stored &&
     isHarnessId(stored.harnessId) &&
     approvedHarnesses.includes(stored.harnessId) &&
-    modelSupportedByHarness(stored.modelId, stored.harnessId)
+    modelSupportedByHarness(stored.modelId, stored.harnessId) &&
+    modelServiceable(stored.modelId, providersFor(stored.harnessId))
   ) {
     scopeOverride = {
       harnessId: stored.harnessId,
@@ -1138,7 +1148,8 @@ async function runtimeConfigBody(ctx: ApiCtx, scope: ScopeId): Promise<Record<st
   } else if (
     legacyModel &&
     approvedHarnesses.includes(fallback.harnessId) &&
-    modelSupportedByHarness(legacyModel, fallback.harnessId)
+    modelSupportedByHarness(legacyModel, fallback.harnessId) &&
+    modelServiceable(legacyModel, providersFor(fallback.harnessId))
   ) {
     scopeOverride = { harnessId: fallback.harnessId, modelId: legacyModel, orgRevision: 0 };
   }

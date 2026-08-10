@@ -49,14 +49,24 @@ const MODEL_CATALOG: Record<string, ModelMeta> = {
     label: "GPT-5.6 Luna",
     buttonLabel: "5.6 Luna",
   },
+  "gemini-3.6-flash": {
+    label: "Gemini Flash 3.6",
+    buttonLabel: "Flash 3.6",
+  },
+  "gemini-2.0-flash": {
+    label: "Gemini 2.0 Flash",
+    buttonLabel: "Flash 2.0",
+  },
 };
 
 const DEFAULT_PICKER_MODEL_IDS: readonly string[] = [
+  "gemini-3.6-flash",
   "claude-fable-5",
   "claude-opus-5",
   "claude-opus-4-8",
   "claude-sonnet-5",
   "claude-haiku-4-5",
+  "gemini-2.0-flash",
 ];
 const DEFAULT_CODEX_MODEL_IDS: readonly string[] = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"];
 

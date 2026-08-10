@@ -13,15 +13,17 @@ import {
 } from "../src/model-options.ts";
 import { modelSupportsFastMode, setFastModeModelIds } from "../src/pi-models.ts";
 
-test("the built-in picker includes Fable alongside Opus/Sonnet/Haiku", () => {
+test("the built-in picker includes Gemini alongside Fable/Opus/Sonnet/Haiku", () => {
   applyPickerModelIds(null);
   const values = getModelOptions().map((o) => o.value);
   assert.deepEqual(values, [
+    "gemini-3.6-flash",
     "claude-fable-5",
     "claude-opus-5",
     "claude-opus-4-8",
     "claude-sonnet-5",
     "claude-haiku-4-5",
+    "gemini-2.0-flash",
   ]);
 });
 
@@ -34,11 +36,11 @@ test("the org base model is the default selection when it's an available option"
 
 test("without a base model (or one outside the picker) the first option is the default", () => {
   applyPickerModelIds(null);
-  assert.equal(defaultModelValue(), "claude-fable-5");
+  assert.equal(defaultModelValue(), "gemini-3.6-flash");
   applyPickerModelIds(["claude-sonnet-5", "claude-haiku-4-5"], "claude-fable-5");
   assert.equal(defaultModelValue(), "claude-sonnet-5");
   applyPickerModelIds(null, "not-a-real-model");
-  assert.equal(defaultModelValue(), "claude-fable-5");
+  assert.equal(defaultModelValue(), "gemini-3.6-flash");
 });
 
 test("an admin-configured list filters and orders the picker", () => {
@@ -146,7 +148,15 @@ test("unknown ids are dropped; an all-unknown list falls back to the built-in se
   applyPickerModelIds(["nope-1", "nope-2"]);
   assert.deepEqual(
     getModelOptions().map((o) => o.value),
-    ["claude-fable-5", "claude-opus-5", "claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"],
+    [
+      "gemini-3.6-flash",
+      "claude-fable-5",
+      "claude-opus-5",
+      "claude-opus-4-8",
+      "claude-sonnet-5",
+      "claude-haiku-4-5",
+      "gemini-2.0-flash",
+    ],
   );
 });
 

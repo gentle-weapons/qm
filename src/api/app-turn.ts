@@ -125,9 +125,21 @@ export function createTurnMethods(
             ? scopeId("personal", actor.id)
             : scopeId(req.conversation.kind, req.conversation.channelRef ?? threadRef);
         const fallbackHarness = isHarnessId(deps.harnessId) ? deps.harnessId : "pi";
+        const configuredKeys = deps.providerKeys ??
+          deps.modelProviders ?? { anthropic: false, openai: false, openrouter: false, google: false };
+        let providers = deps.modelProviders;
+        if (deps.modelCredentials) {
+          providers = modelProviderAvailabilityFor(
+            fallbackHarness,
+            configuredKeys,
+            await deps.modelCredentials.availability(),
+          );
+        } else if (deps.providerKeys) {
+          providers = modelProviderAvailabilityFor(fallbackHarness, configuredKeys);
+        }
         const runtimeFallback = deps.runtimeFallback ?? {
           harnessId: fallbackHarness,
-          modelId: defaultModelForHarness(fallbackHarness),
+          modelId: defaultModelForHarness(fallbackHarness, deps.baseModelDefault, providers),
         };
         let orgRuntime;
         let configuredRuntime;
@@ -150,18 +162,6 @@ export function createTurnMethods(
         }
         if (req.harness && !isHarnessId(req.harness)) {
           return { status: "refused", reason: `runtime ${req.harness} is not approved` };
-        }
-        const configuredKeys = deps.providerKeys ??
-          deps.modelProviders ?? { anthropic: false, openai: false, openrouter: false, google: false };
-        let providers = deps.modelProviders;
-        if (deps.modelCredentials) {
-          providers = modelProviderAvailabilityFor(
-            runtime.harnessId,
-            configuredKeys,
-            await deps.modelCredentials.availability(),
-          );
-        } else if (deps.providerKeys) {
-          providers = modelProviderAvailabilityFor(runtime.harnessId, configuredKeys);
         }
         if (providers && !modelServiceable(runtime.modelId, providers)) {
           return {
