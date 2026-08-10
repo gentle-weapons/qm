@@ -20,3 +20,10 @@ variable "gcp_zone" {
   description = "GCP Zone"
   default     = "us-central1-a"
 }
+
+variable "domain_name" {
+  type        = string
+  description = "Domain name for Caddy automatic HTTPS reverse proxy"
+  default     = "joe.gentleweapons.xyz"
+}
+

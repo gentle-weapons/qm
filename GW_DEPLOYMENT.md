@@ -17,11 +17,14 @@ This document details the deployment, operational architecture, management, and 
 #### Core Application VM (`qm-core-vm`)
 - **External IP**: `35.255.31.143`
 - **Internal IP**: `10.0.1.2`
+- **Domain**: `joe.gentleweapons.xyz`
 - **Runtime**: Node.js 24
 - **API Framework**: Fastify running on port `3000`
-- **Process Manager**: PM2 (`qm-core`)
-- **Integrations**: Slack Socket Mode client
-- **Role**: Handles HTTP API traffic, inbound Slack event subscriptions via WebSocket Socket Mode, process orchestration, and database interaction.
+- **Process Manager**: PM2 (`qm-core`, `qm-web-ui`, `qm-admin`, `qm-portal`)
+- **Reverse Proxy**: Caddy (automatic HTTPS / Let's Encrypt for `joe.gentleweapons.xyz`)
+- **Integrations**: Slack Socket Mode client & Slack OIDC SSO
+- **Role**: Handles HTTP API traffic, public OIDC web portal, inbound Slack event subscriptions via WebSocket Socket Mode, process orchestration, and database interaction.
+
 
 #### Cloud SQL PostgreSQL Database (`qm-postgres-32afcc0b`)
 - **Instance Name**: `qm-postgres-32afcc0b`
@@ -160,10 +163,11 @@ The GCP infrastructure for QM is defined in the `terraform/` directory.
 
 ### Configuration Files
 Located at `/Users/corycooper/workspace/gw/qm/terraform/`:
-- `main.tf`: VPC networks, firewall rules, compute instances (`qm-core-vm`, `qm-sandbox-vm`), and Cloud SQL PostgreSQL instance (`qm-postgres-*`).
-- `variables.tf`: Input variables (`gcp_project_id`, `gcp_region`, `gcp_zone`, `db_password`).
+- `main.tf`: VPC networks, firewall rules, compute instances (`qm-core-vm`, `qm-sandbox-vm`) with Caddy installation startup-script, and Cloud SQL PostgreSQL instance (`qm-postgres-*`).
+- `variables.tf`: Input variables (`gcp_project_id`, `gcp_region`, `gcp_zone`, `db_password`, `domain_name`).
 - `outputs.tf`: Output specifications for instance public/private IPs (`core_public_ip`, `sandbox_private_ip`, `postgres_public_ip`).
 - `versions.tf`: Provider requirements (`hashicorp/google`, `hashicorp/random`) and Terraform CLI version constraints.
+
 
 ### Managing Infrastructure via Terraform
 

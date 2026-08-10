@@ -81,7 +81,26 @@ resource "google_compute_instance" "core_vm" {
 
   metadata = {
     enable-oslogin = "TRUE"
-    startup-script = "iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000"
+    startup-script = <<-EOF
+      #!/bin/bash
+      if ! command -v caddy &> /dev/null; then
+        apt-get update
+        apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl
+        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+        apt-get update
+        apt-get install -y caddy
+      fi
+
+      cat <<'CADDY_EOF' > /etc/caddy/Caddyfile
+      ${var.domain_name} {
+          reverse_proxy localhost:8080
+      }
+      CADDY_EOF
+
+      systemctl enable --now caddy
+      systemctl reload caddy || systemctl restart caddy
+    EOF
   }
 }
 
