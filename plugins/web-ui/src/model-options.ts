@@ -61,7 +61,6 @@ const MODEL_CATALOG: Record<string, ModelMeta> = {
 
 const DEFAULT_PICKER_MODEL_IDS: readonly string[] = [
   "gemini-3.6-flash",
-  "claude-fable-5",
   "claude-opus-5",
   "claude-opus-4-8",
   "claude-sonnet-5",

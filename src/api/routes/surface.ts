@@ -14,6 +14,7 @@ import {
   FAST_MODE_MODEL_IDS,
   THINKING_LEVELS,
   type HarnessId,
+  type ModelProviderAvailability,
 } from "../../model/pi-models.ts";
 import { builtInModelCatalog, selectableCatalogForHarness, selectableModelCatalog } from "../../model/model-catalog.ts";
 import { errMessage } from "../../util/errors.ts";

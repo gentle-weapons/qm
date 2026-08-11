@@ -13,12 +13,11 @@ import {
 } from "../src/model-options.ts";
 import { modelSupportsFastMode, setFastModeModelIds } from "../src/pi-models.ts";
 
-test("the built-in picker includes Gemini alongside Fable/Opus/Sonnet/Haiku", () => {
+test("the built-in picker includes Gemini alongside Opus/Sonnet/Haiku", () => {
   applyPickerModelIds(null);
   const values = getModelOptions().map((o) => o.value);
   assert.deepEqual(values, [
     "gemini-3.6-flash",
-    "claude-fable-5",
     "claude-opus-5",
     "claude-opus-4-8",
     "claude-sonnet-5",
@@ -28,8 +27,8 @@ test("the built-in picker includes Gemini alongside Fable/Opus/Sonnet/Haiku", ()
 });
 
 test("the org base model is the default selection when it's an available option", () => {
-  applyPickerModelIds(null, "claude-fable-5");
-  assert.equal(defaultModelValue(), "claude-fable-5");
+  applyPickerModelIds(null, "claude-sonnet-5");
+  assert.equal(defaultModelValue(), "claude-sonnet-5");
   applyPickerModelIds(["claude-opus-4-8", "claude-sonnet-5"], "claude-sonnet-5");
   assert.equal(defaultModelValue(), "claude-sonnet-5");
 });
@@ -140,17 +139,16 @@ test("an all-retired list falls back within the approved harness", () => {
 });
 
 test("unknown ids are dropped; an all-unknown list falls back to the built-in set", () => {
-  applyPickerModelIds(["claude-fable-5", "not-a-real-model"]);
+  applyPickerModelIds(["claude-sonnet-5", "not-a-real-model"]);
   assert.deepEqual(
     getModelOptions().map((o) => o.value),
-    ["claude-fable-5"],
+    ["claude-sonnet-5"],
   );
   applyPickerModelIds(["nope-1", "nope-2"]);
   assert.deepEqual(
     getModelOptions().map((o) => o.value),
     [
       "gemini-3.6-flash",
-      "claude-fable-5",
       "claude-opus-5",
       "claude-opus-4-8",
       "claude-sonnet-5",

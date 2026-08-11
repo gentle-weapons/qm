@@ -111,8 +111,9 @@ function modelOptionFor(value: ModelOptionValue, scopeKey?: string | null): Mode
   const options = getModelOptions(scopeKey);
   return (
     options.find((option) => option.value === value) ??
-    options.find((option) => option.value === defaultModelValue()) ??
-    options[0]
+    options.find((option) => option.model.id === value) ??
+    options.find((option) => option.value === defaultModelValue(scopeKey)) ??
+    options[0]!
   );
 }
 

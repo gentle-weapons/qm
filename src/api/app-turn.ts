@@ -139,7 +139,7 @@ export function createTurnMethods(
         }
         const runtimeFallback = deps.runtimeFallback ?? {
           harnessId: fallbackHarness,
-          modelId: defaultModelForHarness(fallbackHarness, deps.baseModelDefault, providers),
+          modelId: defaultModelForHarness(fallbackHarness, undefined, providers),
         };
         let orgRuntime;
         let configuredRuntime;

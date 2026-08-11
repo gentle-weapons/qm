@@ -1,5 +1,5 @@
 export const CORE_API_URL = (process.env.CORE_API_URL ?? "http://localhost:8080").replace(/\/$/, "");
-export const CORE_ORG_ID = process.env.CORE_ORG_ID ?? "acme";
+export const CORE_ORG_ID = process.env.CORE_ORG_ID ?? "default-org";
 const secret = (raw: string | undefined): string | undefined => (raw?.trim() ? raw : undefined);
 
 export const CORE_SIGNING_SECRET = secret(process.env.CORE_SIGNING_SECRET);
