@@ -1,0 +1,4 @@
+interface:
+  display_name: "Merge Upstream"
+  short_description: "Merge yc-software/qm into the current branch"
+  default_prompt: "Use $merge-upstream to merge upstream qm into this branch."
