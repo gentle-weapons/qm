@@ -205,3 +205,34 @@ test("a scope's own model list is derived without disturbing the active picker",
     "reading a scope's options never re-points the composer's picker",
   );
 });
+
+test("runtime options include custom-provider models from the catalog", () => {
+  const options = runtimeModelOptions(
+    ["pi"],
+    { pi: ["claude-opus-4-8", "acme-large"] },
+    { "acme-large": { name: "Acme Large", provider: "acme-gateway" } },
+  );
+  const acme = options.find((option) => option.value === "pi:acme-large");
+  assert.ok(acme);
+  assert.equal(acme.label, "Acme Large");
+  assert.equal(acme.model.provider, "acme-gateway");
+});
+
+test("runtime model options expose useful provider groups for long OpenRouter catalogs", () => {
+  const options = runtimeModelOptions(
+    ["pi"],
+    {
+      pi: ["openai/o3-pro", "anthropic/claude-opus-4.7", "google/gemini-2.5-pro-preview", "arcee-ai/virtuoso-large"],
+    },
+    {
+      "openai/o3-pro": { name: "OpenAI: o3 Pro", provider: "openrouter" },
+      "anthropic/claude-opus-4.7": { name: "Anthropic: Claude Opus 4.7", provider: "openrouter" },
+      "google/gemini-2.5-pro-preview": { name: "Google: Gemini 2.5 Pro Preview", provider: "openrouter" },
+      "arcee-ai/virtuoso-large": { name: "Arcee AI: Virtuoso Large", provider: "openrouter" },
+    },
+  );
+  assert.deepEqual(
+    options.map((option) => option.groupLabel),
+    ["OpenAI", "Anthropic", "Google", "Arcee AI"],
+  );
+});

@@ -8,6 +8,8 @@ import {
   type MemoryRecallMode,
 } from "./memory/policy.ts";
 import { parseMemoryStrategyKind, type MemoryStrategyKind } from "./memory/strategy.ts";
+import { sanitizeBranding } from "./resolution/branding.ts";
+import type { OrgBranding } from "./resolution/config-store.ts";
 import { validateCoreSecretEnv } from "./deployment/secret-schema.ts";
 import { DEFAULT_CAPTURE_QUIET_MS } from "./memory/strategies/per-turn.ts";
 import { parseSecurityPosture, type SecurityPosture } from "./security/security-posture.ts";
@@ -29,13 +31,15 @@ export interface Config {
   orgId: string;
   sessionStore: "memory" | "postgres";
   databaseUrl?: string;
+  databaseCaCert?: string;
+  databaseCaCertFile?: string;
   harness: "mock" | "pi" | "opencode" | "codex" | "claude";
   securityPosture: SecurityPosture;
-  sandboxBackend: "aws" | "local" | "sprites";
-  sandboxSecondaryBackend?: "aws" | "local" | "sprites";
-  deployProvider: "docker" | "aws";
+  sandboxBackend: "aws" | "local" | "sprites" | "smolmachines";
+  sandboxSecondaryBackend?: "aws" | "local" | "sprites" | "smolmachines";
+  deployProvider: "docker" | "aws" | "fly";
   egressServiceHosts?: string[];
-  brandingDefault?: { accent?: string; mark?: string; selfLabel?: string };
+  brandingDefault?: OrgBranding;
   modelId?: string;
   opencodeModel?: string;
   codexModel?: string;
@@ -57,6 +61,7 @@ export interface Config {
   piSystemCacheSplit: boolean;
   sessionTapeMode: "shadow" | "serve";
   adminGrants?: string;
+  emailAuthPrincipals?: string[];
   rateLimitPerWindow: number;
   rateLimitWindowMs: number;
   budgetUsdPerWindow?: number;
@@ -143,7 +148,9 @@ export interface Config {
   awsSandbox: AwsSandboxEnv;
   localSandbox: LocalSandboxEnv;
   spritesSandbox: SpritesSandboxEnv;
+  smolmachinesSandbox: SmolmachinesSandboxEnv;
   awsDeploy: AwsDeployEnv;
+  flyDeploy: FlyDeployEnv;
 }
 
 export function configuredModelForHarness(config: Config, harness: string): string | undefined {
@@ -226,6 +233,7 @@ function awsSandboxEnv(env: NodeJS.ProcessEnv): AwsSandboxEnv {
     ...(numEnvStrict("AWS_SANDBOX_SNAPSHOT_INTERVAL_MS", env.AWS_SANDBOX_SNAPSHOT_INTERVAL_MS) !== undefined
       ? { snapshotIntervalMs: numEnvStrict("AWS_SANDBOX_SNAPSHOT_INTERVAL_MS", env.AWS_SANDBOX_SNAPSHOT_INTERVAL_MS) }
       : {}),
+    ...(env.QM_CORE_CONTAINER ? { coreContainer: env.QM_CORE_CONTAINER } : {}),
     ...(numEnvStrict("SANDBOX_TIMEOUT_SEC", env.SANDBOX_TIMEOUT_SEC) !== undefined
       ? { defaultTimeoutSec: numEnvStrict("SANDBOX_TIMEOUT_SEC", env.SANDBOX_TIMEOUT_SEC) }
       : {}),
@@ -246,6 +254,7 @@ interface LocalSandboxEnv {
   dockerBin?: string;
   cpus?: number;
   memoryMb?: number;
+  coreContainer?: string;
   defaultTimeoutSec?: number;
 }
 
@@ -279,6 +288,40 @@ function spritesSandboxEnv(env: NodeJS.ProcessEnv): SpritesSandboxEnv {
     ...(env.SPRITES_BASE_URL ? { baseUrl: env.SPRITES_BASE_URL } : {}),
     ...(env.SPRITES_NAME_PREFIX ? { namePrefix: env.SPRITES_NAME_PREFIX } : {}),
     ...(env.SPRITES_EGRESS_PROXY_URL ? { egressProxyUrl: env.SPRITES_EGRESS_PROXY_URL } : {}),
+    ...(numEnvStrict("SANDBOX_TIMEOUT_SEC", env.SANDBOX_TIMEOUT_SEC) !== undefined
+      ? { defaultTimeoutSec: numEnvStrict("SANDBOX_TIMEOUT_SEC", env.SANDBOX_TIMEOUT_SEC) }
+      : {}),
+  };
+}
+
+interface SmolmachinesSandboxEnv {
+  token?: string;
+  baseUrl?: string;
+  namePrefix?: string;
+  image?: string;
+  cpus?: number;
+  memoryMb?: number;
+  diskGb?: number;
+  egressProxyUrl?: string;
+  defaultTimeoutSec?: number;
+}
+
+function smolmachinesSandboxEnv(env: NodeJS.ProcessEnv): SmolmachinesSandboxEnv {
+  return {
+    ...(env.SMOLMACHINES_TOKEN ? { token: env.SMOLMACHINES_TOKEN } : {}),
+    ...(env.SMOLMACHINES_BASE_URL ? { baseUrl: env.SMOLMACHINES_BASE_URL } : {}),
+    ...(env.SMOLMACHINES_NAME_PREFIX ? { namePrefix: env.SMOLMACHINES_NAME_PREFIX } : {}),
+    ...(env.SMOLMACHINES_IMAGE ? { image: env.SMOLMACHINES_IMAGE } : {}),
+    ...(numEnvStrict("SMOLMACHINES_CPUS", env.SMOLMACHINES_CPUS) !== undefined
+      ? { cpus: numEnvStrict("SMOLMACHINES_CPUS", env.SMOLMACHINES_CPUS) }
+      : {}),
+    ...(numEnvStrict("SMOLMACHINES_MEMORY_MB", env.SMOLMACHINES_MEMORY_MB) !== undefined
+      ? { memoryMb: numEnvStrict("SMOLMACHINES_MEMORY_MB", env.SMOLMACHINES_MEMORY_MB) }
+      : {}),
+    ...(numEnvStrict("SMOLMACHINES_DISK_GB", env.SMOLMACHINES_DISK_GB) !== undefined
+      ? { diskGb: numEnvStrict("SMOLMACHINES_DISK_GB", env.SMOLMACHINES_DISK_GB) }
+      : {}),
+    ...(env.SMOLMACHINES_EGRESS_PROXY_URL ? { egressProxyUrl: env.SMOLMACHINES_EGRESS_PROXY_URL } : {}),
     ...(numEnvStrict("SANDBOX_TIMEOUT_SEC", env.SANDBOX_TIMEOUT_SEC) !== undefined
       ? { defaultTimeoutSec: numEnvStrict("SANDBOX_TIMEOUT_SEC", env.SANDBOX_TIMEOUT_SEC) }
       : {}),
@@ -373,6 +416,24 @@ function awsDeployEnv(env: NodeJS.ProcessEnv): AwsDeployEnv {
   };
 }
 
+interface FlyDeployEnv {
+  token: string;
+  appPrefix: string;
+  baseImage: string;
+  org: string;
+  region?: string;
+}
+
+function flyDeployEnv(env: NodeJS.ProcessEnv): FlyDeployEnv {
+  return {
+    token: env.FLY_DEPLOY_API_TOKEN ?? "",
+    appPrefix: env.FLY_DEPLOY_APP_PREFIX ?? "",
+    baseImage: env.FLY_DEPLOY_BASE_IMAGE ?? "",
+    org: env.FLY_ORG ?? "",
+    ...(env.FLY_REGION ? { region: env.FLY_REGION } : {}),
+  };
+}
+
 const DEFAULT_ORG_ID = "default-org";
 
 export function orgId(): string {
@@ -452,17 +513,12 @@ function numEnvStrict(name: string, value: string | undefined): number | undefin
 }
 
 function orgBrandingFromEnv(env: NodeJS.ProcessEnv): Config["brandingDefault"] {
-  const clean = (v: string | undefined): string =>
-    (v ?? "").replace(/[\u0000-\u001F\u007F-\u009F\u2028\u2029<>]/g, "").trim();
-  const accentRaw = clean(env.ORG_BRAND_ACCENT);
-  const accent = /^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(accentRaw) ? accentRaw : undefined;
-  const mark =
-    clean(env.ORG_BRAND_MARK)
-      .replace(/["\\{}]/g, "")
-      .slice(0, 2) || undefined;
-  const selfLabel = clean(env.ORG_BRAND_SELF_LABEL).slice(0, 40) || undefined;
-  const branding = { ...(accent ? { accent } : {}), ...(mark ? { mark } : {}), ...(selfLabel ? { selfLabel } : {}) };
-  return Object.keys(branding).length ? branding : undefined;
+  return sanitizeBranding({
+    accent: env.ORG_BRAND_ACCENT,
+    mark: env.ORG_BRAND_MARK,
+    selfLabel: env.ORG_BRAND_SELF_LABEL,
+    orgName: env.ORG_BRAND_ORG_NAME,
+  });
 }
 
 function harnessEnvStrict(value: string | undefined): Config["harness"] {
@@ -478,8 +534,10 @@ function harnessEnvStrict(value: string | undefined): Config["harness"] {
 function sandboxBackendEnvStrict(value: string | undefined, name = "SANDBOX_BACKEND"): Config["sandboxBackend"] {
   if (value === undefined || value.trim() === "") return "local";
   const backend = value.trim();
-  if (backend === "aws" || backend === "local" || backend === "sprites") return backend;
-  throw new Error(`${name}=${JSON.stringify(value)} is not recognized — use aws, local, or sprites, or unset it.`);
+  if (backend === "aws" || backend === "local" || backend === "sprites" || backend === "smolmachines") return backend;
+  throw new Error(
+    `${name}=${JSON.stringify(value)} is not recognized — use aws, local, sprites, or smolmachines, or unset it.`,
+  );
 }
 
 function secretsBackendEnvStrict(value: string | undefined, prefix: string): Config["secretsBackend"] {
@@ -581,7 +639,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   const dataDir = resolve(env.DATA_DIR ?? "./data");
   if (env.NODE_ENV === "production" && !env.SANDBOX_BACKEND?.trim()) {
-    throw new Error("SANDBOX_BACKEND must be set explicitly in production — use sprites, aws, or local.");
+    throw new Error("SANDBOX_BACKEND must be set explicitly in production — use sprites, smolmachines, aws, or local.");
   }
   const sandboxBackend = sandboxBackendEnvStrict(env.SANDBOX_BACKEND);
   const secondaryRaw = env.SANDBOX_SECONDARY_BACKEND?.trim();
@@ -637,7 +695,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   const publicApiUrl = env.PUBLIC_API_URL ?? env.AGENT_API_URL;
   const publicUrl = env.PUBLIC_WEB_URL ?? publicApiUrl;
-  const deployProvider: "aws" | "docker" = env.DEPLOY_PROVIDER === "aws" ? "aws" : "docker";
+  const deployProvider = env.DEPLOY_PROVIDER ?? "docker";
+  if (deployProvider !== "aws" && deployProvider !== "docker" && deployProvider !== "fly") {
+    throw new Error(
+      `DEPLOY_PROVIDER=${JSON.stringify(deployProvider)} is not recognized (expected aws, docker, or fly)`,
+    );
+  }
   let runStore: "memory" | "postgres" = env.SESSION_STORE === "postgres" ? "postgres" : "memory";
   if (env.RUN_STORE === "memory" || env.RUN_STORE === "postgres") runStore = env.RUN_STORE;
   const providerBaseUrls = providerBaseUrlsFromEnv(env);
@@ -694,6 +757,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     orgId: env.ORG_ID ?? DEFAULT_ORG_ID,
     sessionStore: env.SESSION_STORE === "postgres" ? "postgres" : "memory",
     ...(env.DATABASE_URL ? { databaseUrl: env.DATABASE_URL } : {}),
+    ...(env.DATABASE_CA_CERT ? { databaseCaCert: env.DATABASE_CA_CERT } : {}),
+    ...(env.DATABASE_CA_CERT_FILE ? { databaseCaCertFile: env.DATABASE_CA_CERT_FILE } : {}),
     harness: harnessEnvStrict(env.HARNESS),
     securityPosture: securityPostureEnvStrict(env.HARNESS_SECURITY_POSTURE),
     securityScreenBackend,
@@ -738,6 +803,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ...(modelProvider ? { modelProvider } : {}),
     providerBaseUrls,
     ...(env.ADMIN_GRANTS ? { adminGrants: env.ADMIN_GRANTS } : {}),
+    ...(env.AUTH_ALLOWED_EMAILS
+      ? {
+          emailAuthPrincipals: [
+            ...new Set(
+              env.AUTH_ALLOWED_EMAILS.split(",")
+                .map((email) => email.trim().toLowerCase())
+                .filter(Boolean),
+            ),
+          ],
+        }
+      : {}),
     piCaptureRequests: boolEnvStrict("PI_CAPTURE_REQUESTS", env.PI_CAPTURE_REQUESTS) ?? true,
     piSystemCacheSplit: boolEnvStrict("PI_SYSTEM_CACHE_SPLIT", env.PI_SYSTEM_CACHE_SPLIT) ?? false,
     sessionTapeMode: env.SESSION_TAPE_MODE === "shadow" ? "shadow" : "serve",
@@ -859,6 +935,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     awsSandbox: awsSandboxEnv(env),
     localSandbox: localSandboxEnv(env),
     spritesSandbox: spritesSandboxEnv(env),
+    smolmachinesSandbox: smolmachinesSandboxEnv(env),
     awsDeploy: awsDeployEnv(env),
+    flyDeploy: flyDeployEnv(env),
   };
 }

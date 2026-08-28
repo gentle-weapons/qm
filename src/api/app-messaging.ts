@@ -31,6 +31,7 @@ export function createMessagingMethods(
   App,
   | "createCron"
   | "getCron"
+  | "getCronRuns"
   | "listCrons"
   | "listCronsForViewer"
   | "updateCron"
@@ -38,6 +39,11 @@ export function createMessagingMethods(
   | "setCronEnabled"
   | "setCronDestination"
   | "setCronRecipientConsent"
+  | "createWebhook"
+  | "getWebhook"
+  | "listWebhooks"
+  | "setWebhookEnabled"
+  | "setWebhookRecipientConsent"
   | "pendingDeliveries"
   | "enqueueDelivery"
   | "ingestSurfaceEvents"
@@ -83,6 +89,12 @@ export function createMessagingMethods(
   const contextRequests = deps.contextRequests ?? createMemoryMap<SurfaceContextRequest>();
   const contextRequestListeners = new Set<(request: SurfaceContextRequest) => void>();
   const contextRequestTokens = new Map<string, string>();
+  const emailAuthMembers = deps.emailAuthMembers ?? [];
+  const mergedDirectoryMembers = async () => {
+    const stored = await deps.directory.list();
+    const seen = new Set(stored.map((member) => personKey(member.principalId)));
+    return [...stored, ...emailAuthMembers.filter((member) => !seen.has(personKey(member.principalId)))];
+  };
 
   return {
     async createCron(input) {
@@ -107,6 +119,9 @@ export function createMessagingMethods(
     },
     getCron(id) {
       return deps.crons.get(id);
+    },
+    getCronRuns(id, limit) {
+      return deps.crons.getRuns(id, limit);
     },
     listCrons() {
       return deps.crons.list();
@@ -152,7 +167,10 @@ export function createMessagingMethods(
         const members = patch.members ?? before.members;
         if (!members?.length) throw new Error("scopeShared requires a member snapshot");
       }
-      const updated = await deps.crons.update(id, patch);
+      const grantsReaffirmed = patch.unattendedGrants !== undefined;
+      const guardedPatch =
+        (before.unattendedGrants?.length ?? 0) > 0 && !grantsReaffirmed ? { ...patch, unattendedGrants: [] } : patch;
+      const updated = await deps.crons.update(id, guardedPatch);
       deps.auditLog.record({
         at: Date.now(),
         principalId: before.owner,
@@ -192,6 +210,29 @@ export function createMessagingMethods(
     },
     setCronRecipientConsent(id, recipientConsent) {
       return deps.crons.setRecipientConsent(id, recipientConsent);
+    },
+    async createWebhook(input) {
+      const webhook = await deps.webhooks.create(input);
+      deps.auditLog.record({
+        at: Date.now(),
+        principalId: webhook.createdBy,
+        action: "webhook_create",
+        resource: webhook.id,
+        scopeLabel: webhook.ownerScopeId,
+      });
+      return webhook;
+    },
+    getWebhook(id) {
+      return deps.webhooks.get(id);
+    },
+    listWebhooks() {
+      return deps.webhooks.list();
+    },
+    setWebhookEnabled(id, enabled) {
+      return deps.webhooks.setEnabled(id, enabled);
+    },
+    setWebhookRecipientConsent(id, recipientConsent) {
+      return deps.webhooks.setRecipientConsent(id, recipientConsent);
     },
     pendingDeliveries(type, claimMs) {
       return claimMs && claimMs > 0 ? deps.deliveries.claimPending(type, claimMs) : deps.deliveries.pending(type);
@@ -336,11 +377,12 @@ export function createMessagingMethods(
         });
       }
     },
-    async upsertChannels(channels, channelMembers, syncedAt) {
-      await deps.directory.replaceChannels(channels, channelMembers, syncedAt);
+    async upsertChannels(channels, channelMembers, syncedAt, channelRosterIds, revocations) {
+      await deps.directory.replaceChannels(channels, channelMembers, syncedAt, channelRosterIds, revocations);
+      await h.syncLinkedProjectRosters();
     },
-    async upsertGroups(groupMembers, syncedAt) {
-      await deps.directory.replaceGroups(groupMembers, syncedAt);
+    async upsertGroups(groupMembers, syncedAt, groupIds, groupRosterIds) {
+      await deps.directory.replaceGroups(groupMembers, syncedAt, groupIds, groupRosterIds);
     },
     async setDirectoryWorkspaceUrl(url) {
       await deps.directory.setWorkspaceUrl(url);
@@ -358,20 +400,30 @@ export function createMessagingMethods(
         ...(isPrivate !== undefined ? { isPrivate } : {}),
       });
     },
-    resolveRecipient(query) {
-      return deps.directory.resolve(query);
+    async resolveRecipient(query) {
+      const stored = await deps.directory.resolve(query);
+      if (stored.kind !== "none") return stored;
+      const key = personKey(query);
+      const member = emailAuthMembers.find(
+        (candidate) => personKey(candidate.principalId) === key || personKey(candidate.displayName) === key,
+      );
+      return member ? { kind: "one", member } : { kind: "none" };
     },
     resolveChannel(query) {
       return deps.directory.resolveChannel(query);
     },
     directoryMembers() {
-      return deps.directory.list();
+      return mergedDirectoryMembers();
     },
     directoryChannels() {
       return deps.directory.listChannels();
     },
-    directoryMember(principalId) {
-      return deps.directory.get(principalId);
+    async directoryMember(principalId) {
+      return (
+        (await deps.directory.get(principalId)) ??
+        emailAuthMembers.find((member) => personKey(member.principalId) === personKey(principalId)) ??
+        null
+      );
     },
     samePerson(a, b) {
       return samePersonInDirectory(deps.directory, a, b);
@@ -435,12 +487,16 @@ export function createMessagingMethods(
         if (r.group) extra.group = r.group;
       }
       if (input.threadTs) {
-        if (baseDestination.type !== "slack" && baseDestination.type !== "group") {
+        if (
+          baseDestination.type !== "slack" &&
+          baseDestination.type !== "group" &&
+          baseDestination.type !== "principal"
+        ) {
           return {
             ok: false,
             status: 400,
             error: "bad_request",
-            message: "threadTs threads a channel or group DM post — a DM to a person has no threads",
+            message: "threadTs requires a Slack channel, group DM, or person DM",
           };
         }
         baseDestination = withThread(baseDestination, input.threadTs);

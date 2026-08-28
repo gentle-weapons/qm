@@ -12,6 +12,7 @@ import {
   isHarnessId,
   modelProviderAvailabilityFor,
   modelServiceable,
+  resolveModel,
 } from "../model/pi-models.ts";
 import { selectableCatalogForHarness, selectableModelCatalog } from "../model/model-catalog.ts";
 import { resolveRuntimeChoiceDurable } from "../harness/harness-router.ts";
@@ -36,6 +37,7 @@ export function createTurnMethods(
   | "pendingApprovalForThread"
   | "getRun"
   | "activeRunForThread"
+  | "withdrawRun"
   | "signalRun"
   | "replayOrphanedRunSignals"
 > {
@@ -56,6 +58,9 @@ export function createTurnMethods(
     async turn(req: TurnRequest): Promise<TurnResult> {
       await deps.identity.refresh();
       const actor: Principal = deps.identity.resolve(req.actor);
+      if (!deps.identity.isInternal(actor)) {
+        return { status: "refused", reason: "internal-only: non-internal principals cannot interact" };
+      }
       let projectAudience: Principal[] | undefined;
       let projectName: string | undefined;
       let projectVersion: string | undefined;
@@ -65,9 +70,6 @@ export function createTurnMethods(
       const projectId = projectGroup ? projectIdFromGroupRef(conversationRef) : null;
 
       if (projectGroup) {
-        if (!deps.identity.isInternal(actor)) {
-          return { status: "refused", reason: "you're not a member of that context" };
-        }
         if (!projectId) return { status: "refused", reason: "you're not a member of that context" };
         const project = await deps.projects?.get(projectId);
         if (
@@ -99,6 +101,22 @@ export function createTurnMethods(
         }
       }
 
+      const orgRuntimeScope = scopeId("org", orgIdOf());
+      const turnRuntimeScope =
+        req.conversation.kind === "dm"
+          ? scopeId("personal", actor.id)
+          : scopeId(req.conversation.kind, req.conversation.channelRef ?? req.conversation.threadRef);
+      const [storedOrgRuntime, storedTurnRuntime] = await Promise.all([
+        deps.config.getRuntimeSelectionDurable(orgRuntimeScope),
+        turnRuntimeScope === orgRuntimeScope ? null : deps.config.getRuntimeSelectionDurable(turnRuntimeScope),
+      ]);
+      const needsOpenRouterCatalog = [storedOrgRuntime?.modelId, storedTurnRuntime?.modelId].some(
+        (modelId) => modelId && !resolveModel(modelId),
+      );
+      if (needsOpenRouterCatalog && deps.modelCredentials && (await deps.modelCredentials.availability()).openrouter) {
+        await selectableModelCatalog(deps.modelCredentialFetch);
+      }
+
       async function withCurrentProjectRoster<T>(fn: () => Promise<T>): Promise<T | null> {
         if (!projectId || !deps.projects) return fn();
         if (!conversationRef || !projectVersion) return null;
@@ -127,13 +145,10 @@ export function createTurnMethods(
         const fallbackHarness = isHarnessId(deps.harnessId) ? deps.harnessId : "pi";
         const configuredKeys = deps.providerKeys ??
           deps.modelProviders ?? { anthropic: false, openai: false, openrouter: false, google: false };
+        const managedKeys = deps.modelCredentials ? await deps.modelCredentials.availability() : configuredKeys;
         let providers = deps.modelProviders;
         if (deps.modelCredentials) {
-          providers = modelProviderAvailabilityFor(
-            fallbackHarness,
-            configuredKeys,
-            await deps.modelCredentials.availability(),
-          );
+          providers = modelProviderAvailabilityFor(fallbackHarness, configuredKeys, managedKeys);
         } else if (deps.providerKeys) {
           providers = modelProviderAvailabilityFor(fallbackHarness, configuredKeys);
         }
@@ -162,6 +177,11 @@ export function createTurnMethods(
         }
         if (req.harness && !isHarnessId(req.harness)) {
           return { status: "refused", reason: `runtime ${req.harness} is not approved` };
+        }
+        if (deps.modelCredentials) {
+          providers = modelProviderAvailabilityFor(runtime.harnessId, configuredKeys, managedKeys);
+        } else if (deps.providerKeys) {
+          providers = modelProviderAvailabilityFor(runtime.harnessId, configuredKeys);
         }
         if (providers && !modelServiceable(runtime.modelId, providers)) {
           return {
@@ -240,6 +260,9 @@ export function createTurnMethods(
         ...(req.model ? { model: req.model } : {}),
         ...turnModelOptions(req),
         ...(req.readOnly ? { readOnly: true } : {}),
+        ...(req.skipMemory ? { skipMemory: true } : {}),
+        ...(req.unattendedGrants?.length ? { unattendedGrants: req.unattendedGrants } : {}),
+        ...(req.botActor ? { botActor: true } : {}),
         ...(req.surfaceTools ? { surfaceTools: true } : {}),
         ...(req.envelopeWrapped ? { envelopeWrapped: true } : {}),
         ...(typeof req.displayText === "string" && req.displayText ? { displayText: req.displayText } : {}),
@@ -314,11 +337,22 @@ export function createTurnMethods(
               return req.async ? { status: "queued", runId: live.id, steered: true } : drive(live.id);
             if (decision === "unscreened") injectedText = `${unscreenedNotice("mid-turn message")}\n${steerText}`;
           }
+          // A mid-run message can carry files. They can't be materialized into
+          // the live turn's inbox, but the run must hear about them — name
+          // them in the steer (with the message ts so the agent can pull each
+          // via the surface-file API), and never report a captionless file as
+          // steered while silently dropping it.
+          const fileNames = (req.attachments ?? []).map((a) =>
+            a.sourceId
+              ? `${a.name} (fetch via surface-file, ts ${origin.kind === "human" ? (origin.messageTs ?? origin.entryTs) : origin.entryTs})`
+              : a.name,
+          );
           const wake: Wake = {
             situation: origin.kind === "ambient" ? "ambientUpdate" : "addressed",
             ts: String(req.clientSentAt ?? Date.now()),
             text: injectedText,
             halt: origin.kind === "human" && isHalt(req.text),
+            ...(fileNames.length ? { fileNames } : {}),
           };
           const route = routeWake(wake, true, resolveTurnOrigin(live.request).kind === "ambient");
           if (route.kind === "steer" || route.kind === "drop") {
@@ -485,8 +519,22 @@ export function createTurnMethods(
     },
 
     async activeRunForThread(threadRef, viewer) {
-      const run = await deps.runs.activeForThread(threadRef);
-      return run && (!viewer || (await viewerMayUseRun(run, viewer))) ? { runId: run.id } : null;
+      const inFlight = await deps.runs.inFlightForThread(threadRef);
+      const visible: typeof inFlight = [];
+      for (const run of inFlight) if (!viewer || (await viewerMayUseRun(run, viewer))) visible.push(run);
+      const live = visible[0];
+      if (!live) return null;
+      const queued = visible
+        .slice(1)
+        .map((run) => ({ runId: run.id, text: run.request.displayText ?? run.request.text ?? "" }));
+      return { runId: live.id, ...(queued.length ? { queued } : {}) };
+    },
+
+    async withdrawRun(runId, viewer) {
+      const run = await deps.runs.get(runId);
+      if (!run) return { withdrawn: false, reason: "not_found" };
+      if (viewer && !(await viewerMayUseRun(run, viewer))) return { withdrawn: false, reason: "not_found" };
+      return (await deps.runs.withdraw(runId)) ? { withdrawn: true } : { withdrawn: false, reason: "started" };
     },
 
     async signalRun(runId, signal, viewer) {

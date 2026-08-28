@@ -54,14 +54,17 @@ test("attaching files is allowed while a turn is streaming", () => {
   assert.ok(guards.length > 0, "streaming still gates steer/send routing");
 });
 
-test("steering with pending attachments explains they ride the next message", () => {
-  assert.match(composer, /attachments stay for your next message/);
+test("a mid-turn submit queues — attachments cannot ride a queued message and stay for the next", () => {
+  // Mid-turn Enter queues through core (queueDraft), so the steer-button attachment note is gone;
+  // the queue button gates only on draft text, never on the run slot.
+  assert.match(composer, /title="Queue for after this turn"/);
+  assert.doesNotMatch(composer, /attachments stay for your next message/);
 });
 
 test("a steer whose run already ended is recovered, never silently dropped", () => {
-  // sendSteer must inspect the signal outcome and route a failed steer through recovery.
-  assert.match(composer, /const outcome = await ctx\.chat\.signalLiveRun\("steer", text\);/);
-  assert.match(composer, /if \(!outcome\.ok\) recoverEndedRunSteer\(agent, text, outcome\);/);
+  // steerQueued must inspect the signal outcome and route a failed steer through recovery.
+  assert.match(composer, /const outcome = await ctx\.chat\.signalLiveRun\("steer", queued\.text\);/);
+  assert.match(composer, /if \(!outcome\.ok\) recoverEndedRunSteer\(agent, queued\.text, outcome\);/);
   // Replayed by core → detach from the stale stream and attach to the fresh run.
   assert.match(composer, /function recoverEndedRunSteer\(/);
   assert.match(composer, /attachWhenIdle\(agent, 0\);/);
@@ -75,4 +78,19 @@ test("scope runtime defaults include effort and fast mode", () => {
   assert.match(composer, /fastMode: fastOn/);
   assert.match(composer, /config\.effective\.effortLevel/);
   assert.match(composer, /config\.effective\.fastMode === true/);
+});
+
+test("long model menus stay searchable and show the selected effort", () => {
+  assert.match(composer, /const MENU_SEARCH_THRESHOLD = 8;/);
+  assert.match(composer, /searchable: true/);
+  assert.match(composer, /placeholder="Search models…"/);
+  assert.match(composer, /option\.groupLabel/);
+  assert.match(composer, /suffix: `· \$\{effortLabel\(composerState\.effortLevel\)}`/);
+});
+
+test("composer menus stay inside the visible viewport", () => {
+  assert.match(composer, /function placeComposerMenu\(kind: ComposerMenu\)/);
+  assert.match(composer, /window\.visualViewport/);
+  assert.match(composer, /--menu-available-height/);
+  assert.match(composer, /classList\.toggle\("drop-down", placeBelow\)/);
 });

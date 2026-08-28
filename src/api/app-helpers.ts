@@ -27,7 +27,6 @@ import {
 import { samePerson } from "../directory/person.ts";
 import type { Deployment } from "../deploy/deploy-store.ts";
 import { swallow } from "../util/errors.ts";
-import { commandApprovalId } from "../core/approval-id.ts";
 import {
   openGroupViaSurface,
   resolveReachTarget,
@@ -54,6 +53,11 @@ export function createAppHelpers(deps: AppDeps, app: App) {
     adminBase ? `${adminBase}/admin/history?session=${encodeURIComponent(sessionId)}` : undefined;
 
   const surfaceContext = createSurfaceContextPuller(app);
+  const directoryRefresher = createSurfaceContextPuller(app, { waitMs: 4_000 });
+
+  async function refreshSurfaceDirectory(): Promise<void> {
+    await directoryRefresher.pull("slack", { syncDirectory: true, count: 1 });
+  }
   const reachDir: ReachDirectory = {
     resolveRecipient: (q) => deps.directory.resolve(q),
     resolveChannel: (q) => deps.directory.resolveChannel(q),
@@ -125,30 +129,31 @@ export function createAppHelpers(deps: AppDeps, app: App) {
     if (!deps.approvals) return [];
     const [entries, session] = await Promise.all([deps.approvals.entries(), deps.sessions.get(sessionId)]);
     if (!session) return [];
-    const candidates: PendingApprovalRecord[] = [];
-    for (const [, record] of entries) {
+    const candidates: Array<{ key: string; record: PendingApprovalRecord }> = [];
+    for (const [key, record] of entries) {
       if (record.sessionId !== sessionId || (opts.blockingOnly && record.blocksInput === false)) continue;
-      if (await approvalRecordIsCurrent(record, session)) candidates.push(record);
+      if (await approvalRecordIsCurrent(record, session)) candidates.push({ key, record });
     }
     const visible = opts.viewer
       ? (
           await Promise.all(
-            candidates.map(async (record) => ({
-              record,
-              allowed: await approvalVisibleToViewer(session, opts.viewer!, record),
+            candidates.map(async (candidate) => ({
+              candidate,
+              allowed: await approvalVisibleToViewer(session, opts.viewer!, candidate.record),
             })),
           )
         )
           .filter(({ allowed }) => allowed)
-          .map(({ record }) => record)
+          .map(({ candidate }) => candidate)
       : candidates;
-    return visible.map((r) => ({
-      requestId: commandApprovalId(r.sessionId, r.command),
+    return visible.map(({ key, record: r }) => ({
+      requestId: key,
       command: r.command,
       reason: r.reason ?? "requires approval",
       ...(r.matched ? { matched: r.matched } : {}),
       ...(r.purpose ? { purpose: r.purpose } : {}),
       ...(r.summary ? { summary: r.summary } : {}),
+      ...(r.summaryDetail ? { summaryDetail: r.summaryDetail } : {}),
       ...(r.grantModes ? { grantModes: r.grantModes } : {}),
       blocksInput: r.blocksInput !== false,
       ...(r.kind === "approval" ? { kind: r.kind } : {}),
@@ -216,10 +221,15 @@ export function createAppHelpers(deps: AppDeps, app: App) {
 
   async function projectView(project: Project): Promise<ProjectView> {
     const memberIds = (await deps.projects?.members(projectGroupRef(project.id))) ?? project.memberIds;
+    const manual = new Set([project.ownerId, ...project.memberIds]);
     const members = await Promise.all(
       memberIds.map(async (principalId) => {
         const member = await deps.directory.get(principalId).catch(() => null);
-        return { principalId, displayName: member?.displayName?.trim() || principalId };
+        return {
+          principalId,
+          displayName: member?.displayName?.trim() || principalId,
+          ...(manual.has(principalId) ? {} : { viaChannel: true }),
+        };
       }),
     );
     return { ...project, memberIds, scopeId: projectScopeId(project.id), members };
@@ -391,9 +401,30 @@ export function createAppHelpers(deps: AppDeps, app: App) {
   const membershipControlsScope = createMembershipControlsScope(scopeMembershipDeps);
 
   async function authorizesCapabilityScope(
-    claims: Pick<CapabilityClaims, "actorId" | "scopeId" | "scopeVersion">,
+    claims: Pick<CapabilityClaims, "actorId" | "scopeId" | "scopeVersion" | "botActor" | "liveActor" | "members">,
   ): Promise<boolean> {
     const { kind, ref } = parseScopeId(claims.scopeId);
+    if (kind === "channel" && !deps.identity.isInternal(deps.identity.classify(claims.actorId))) return false;
+    const privateChannel =
+      kind === "channel" && (await deps.directory.channelPrivacy?.(ref).catch(() => undefined)) === true;
+    const capabilityMembership = privateChannel
+      ? await deps.directory.channelMembership(ref, claims.actorId).catch(() => undefined)
+      : undefined;
+    const attestedBot =
+      privateChannel &&
+      claims.botActor === true &&
+      claims.liveActor === true &&
+      claims.members?.some((member) => member.id === claims.actorId && member.type === "internal") === true;
+    if (
+      (kind === "channel" &&
+        !(
+          attestedBot ||
+          (capabilityMembership ?? (await principalCanAccessCurrentScope(claims.actorId, claims.scopeId)))
+        )) ||
+      (kind === "group" && !(await principalCanWriteScope(claims.actorId, claims.scopeId)))
+    ) {
+      return false;
+    }
     if (kind !== "group" || deps.projects?.recognizes(ref) !== true) return true;
     return (
       (await principalCanManageScope(claims.actorId, claims.scopeId)) &&
@@ -468,6 +499,53 @@ export function createAppHelpers(deps: AppDeps, app: App) {
     }
     if (canRead) return "read";
     return (await principalCanAccessCurrentScope(principalId, d.ownerScopeId)) ? "read" : null;
+  }
+
+  async function syncProjectChannelRoster(project: Project, actorId: string): Promise<void> {
+    const link = project.slackChannel;
+    if (!link || !deps.projects) return;
+    const roster = await deps.directory.channelMemberIds(link.channelId).catch(() => undefined);
+    if (roster === undefined) return;
+    const derived = roster.filter((m) => deps.identity.isInternal(deps.identity.classify(m)));
+    const channel = (await deps.directory.listChannels().catch(() => [])).find((c) => c.channelId === link.channelId);
+    const prev = project.channelMemberIds ?? [];
+    const manual = new Set([project.ownerId, ...project.memberIds]);
+    const prevSet = new Set(prev);
+    const nextSet = new Set(derived);
+    await deps.projects.syncChannelMembers(project.id, derived, channel?.name, async ({ project: p, changed }) => {
+      if (!changed) return;
+      for (const m of derived) {
+        if (prevSet.has(m) || manual.has(m)) continue;
+        deps.auditLog.record({
+          at: Date.now(),
+          principalId: actorId,
+          action: "project.member.add",
+          resource: m,
+          scopeLabel: projectScopeId(p.id),
+        });
+        await reconcileProjectMember(p, m, true);
+      }
+      for (const m of prev) {
+        if (nextSet.has(m) || manual.has(m)) continue;
+        deps.auditLog.record({
+          at: Date.now(),
+          principalId: actorId,
+          action: "project.member.remove",
+          resource: m,
+          scopeLabel: projectScopeId(p.id),
+        });
+        await reconcileProjectMember(p, m, false);
+      }
+    });
+  }
+
+  async function syncLinkedProjectRosters(): Promise<void> {
+    if (!deps.projects) return;
+    for (const project of await deps.projects.listLinked().catch(() => [])) {
+      await syncProjectChannelRoster(project, "directory-sync").catch((err) =>
+        swallow(`projects: channel roster sync for ${project.id}`, err),
+      );
+    }
   }
 
   async function reconcileProjectMember(project: Project, memberId: string, add: boolean): Promise<void> {
@@ -551,7 +629,10 @@ export function createAppHelpers(deps: AppDeps, app: App) {
     effectiveDeploymentPermission,
     principalCanReadDeployment,
     principalGitPermission,
+    refreshSurfaceDirectory,
     reconcileProjectMember,
+    syncProjectChannelRoster,
+    syncLinkedProjectRosters,
     replayOrphanedRunSignals,
   };
 }
