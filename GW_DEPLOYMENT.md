@@ -2,6 +2,18 @@
 
 This document details the deployment, operational architecture, management, and maintenance procedures for the QM application deployed on Google Cloud Platform (GCP) for Gentle Weapons.
 
+## Automated deploy
+
+Use the `deploy-gw-qm` skill or run from the repository root:
+
+```bash
+bash deploy/layers/gw/scripts/deploy-gw-qm.sh
+```
+
+This SSHes to `qm-core-vm`, fast-forwards the checkout, runs `npm ci` and typecheck, reloads PM2 from `deploy/layers/gw/ecosystem.config.cjs`, and verifies `https://joe.gentleweapons.xyz/healthz`.
+
+Merging to `main` also triggers `.github/workflows/deploy-gw.yml` when `GW_GCP_SA_KEY` is configured in GitHub secrets.
+
 ---
 
 ## 1. Architecture Overview

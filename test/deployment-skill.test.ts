@@ -28,17 +28,32 @@ test("package-consumer deployment skill covers both self-owned providers and the
     assert.ok(root.includes(phrase), `package deployment.md includes ${phrase}`);
   }
   assert.match(read("deployment.md"), /cli\/templates\/deployment\/deployment\.md/);
-  for (const path of [
-    ".codex/skills/deploy-qm/SKILL.md",
-    ".codex/skills/deploy-qm/agents/openai.yaml",
-    ".codex/skills/deploy-qm/references/fly.md",
-    ".codex/skills/deploy-qm/references/aws.md",
-    ".codex/skills/deploy-qm/references/slack.md",
-    ".codex/skills/deploy-qm/references/email.md",
-  ]) {
-    assert.ok(existsSync(path), `${path} exists`);
+  const hasDeployGw = existsSync(".codex/skills/deploy-gw-qm/SKILL.md");
+  const hasDeployQm = existsSync(".codex/skills/deploy-qm/SKILL.md");
+  assert.ok(hasDeployGw || hasDeployQm, "a deployment skill exists");
+  if (hasDeployGw) {
+    for (const path of [
+      ".codex/skills/deploy-gw-qm/SKILL.md",
+      ".codex/skills/deploy-gw-qm/agents/openai.yaml",
+      "deploy/layers/gw/scripts/deploy-gw-qm.sh",
+      "deploy/layers/gw/ecosystem.config.cjs",
+    ]) {
+      assert.ok(existsSync(path), `${path} exists`);
+    }
+    assert.match(read(".codex/skills/deploy-gw-qm/SKILL.md"), /deploy\/layers\/gw\/scripts\/deploy-gw-qm\.sh/);
+  } else {
+    for (const path of [
+      ".codex/skills/deploy-qm/SKILL.md",
+      ".codex/skills/deploy-qm/agents/openai.yaml",
+      ".codex/skills/deploy-qm/references/fly.md",
+      ".codex/skills/deploy-qm/references/aws.md",
+      ".codex/skills/deploy-qm/references/slack.md",
+      ".codex/skills/deploy-qm/references/email.md",
+    ]) {
+      assert.ok(existsSync(path), `${path} exists`);
+    }
+    assert.match(read(".codex/skills/deploy-qm/SKILL.md"), /\.\.\/\.\.\/\.\.\/deployment\.md/);
   }
-  assert.match(read(".codex/skills/deploy-qm/SKILL.md"), /\.\.\/\.\.\/\.\.\/deployment\.md/);
   for (const path of [
     "cli/templates/deployment/deployment.md",
     "cli/templates/deployment/SKILL.md",
@@ -65,13 +80,17 @@ test("the deploy skill tells an agent where the sign-in email transport comes fr
   }
   assert.match(email, /operator — needs DNS control/, "the one step an agent cannot do itself is called out");
   assert.match(read("cli/templates/deployment/deployment.md"), /references\/email\.md/);
-  for (const skill of [".codex/skills/deploy-qm/SKILL.md", "cli/templates/deployment/SKILL.md"]) {
-    assert.match(read(skill), /references\/email\.md/, `${skill} routes the agent to the email reference`);
+  if (existsSync(".codex/skills/deploy-gw-qm/SKILL.md")) {
+    assert.match(read("cli/templates/deployment/SKILL.md"), /references\/email\.md/);
+  } else {
+    for (const skill of [".codex/skills/deploy-qm/SKILL.md", "cli/templates/deployment/SKILL.md"]) {
+      assert.match(read(skill), /references\/email\.md/, `${skill} routes the agent to the email reference`);
+    }
+    assert.match(
+      read(".codex/skills/deploy-qm/references/email.md"),
+      /cli\/templates\/deployment\/references\/email\.md/,
+    );
   }
-  assert.match(
-    read(".codex/skills/deploy-qm/references/email.md"),
-    /cli\/templates\/deployment\/references\/email\.md/,
-  );
 });
 
 test("connector onboarding is governed by the live admin-configured list", () => {
