@@ -1,0 +1,11 @@
+{
+  "gcpProjectId": "root-truth-504504-u4",
+  "gcpRegion": "us-central1",
+  "gcpZone": "us-central1-a",
+  "coreVm": "qm-core-vm",
+  "appDir": "/home/cory_gentleweapons_com/app",
+  "gitRemote": "origin",
+  "gitRef": "main",
+  "healthUrl": "https://joe.gentleweapons.xyz/healthz",
+  "terraformDir": "terraform"
+}

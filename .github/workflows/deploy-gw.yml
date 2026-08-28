@@ -1,0 +1,45 @@
+name: Deploy GW QM
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy
+        required: false
+        default: main
+      infra:
+        description: Apply terraform before app rollout
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-gw-qm
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'gentle-weapons/qm'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
+      - uses: google-github-actions/auth@71c30589674871f848c2164a8d0d298e7a73669
+        with:
+          credentials_json: ${{ secrets.GW_GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@8e7a5a3f8a564ea537374f1a0b0a443f1b750102
+
+      - name: Deploy to qm-core-vm
+        env:
+          TF_VAR_db_password: ${{ secrets.GW_TF_DB_PASSWORD }}
+        run: |
+          chmod +x deploy/layers/gw/scripts/deploy-gw-qm.sh
+          REF="${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}"
+          bash deploy/layers/gw/scripts/deploy-gw-qm.sh --ref "$REF" \
+            ${{ github.event_name == 'workflow_dispatch' && inputs.infra && '--infra' || '' }}
