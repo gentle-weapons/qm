@@ -70,6 +70,16 @@ export const FIRST_PARTY_SECRET_SPECS: readonly SecretSpec[] = [
       'OpenAI API key: the Codex harness needs it (its CLI cannot do browser OAuth in a container), and it bills the base model when modelProvider is "openai".',
   },
   {
+    name: "GEMINI_API_KEY",
+    service: "core",
+    required: {
+      when: { kind: "env-equals", service: "core", name: "MODEL_PROVIDER", value: "google" },
+      optionalOtherwise: true,
+    },
+    description:
+      'Gemini API key: bills the base model when modelProvider is "google", an optional deployment fallback otherwise.',
+  },
+  {
     name: "PUBLIC_API_URL",
     service: "core",
     required: { when: { kind: "env-in", service: "core", name: "HARNESS", values: ["pi", "opencode", "codex"] } },
