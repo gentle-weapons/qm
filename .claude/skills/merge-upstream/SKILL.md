@@ -54,7 +54,31 @@ fork. For each file:
   use the `upstream-pr` skill so the next sync stops conflicting.
 
 When both sides changed the same logic, combine the intent rather than picking
-one side wholesale. List conflicted core files in your summary.
+one side wholesale. Capture the conflicted paths while the merge is still in
+progress, and list them in your summary:
+
+```bash
+git diff --name-only --diff-filter=U
+```
+
+That list is the merge's human-decided surface. A reviewer should scope to it,
+not to the hundreds of files upstream changed on its own.
+
+## Upstream code is not the fork's to fix
+
+Most of a sync is upstream files landing verbatim. They are upstream's work, and
+the merge does not adopt responsibility for them:
+
+- A defect in code that arrived unchanged from upstream is an upstream bug.
+  Patching it here rewrites core, so every later sync conflicts on it. Send it
+  with the `upstream-pr` skill and name it in the sync PR instead.
+- Convention divergence is the same call. Upstream code carries explanatory
+  comments that this repo's zero-comments rule would reject on a fork-authored
+  diff; stripping them changes no behavior and guarantees conflicts forever.
+  Leave them alone.
+
+Only what you actually typed to resolve a conflict is the fork's to fix in the
+sync branch.
 
 ## Verify
 
