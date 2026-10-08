@@ -2,7 +2,7 @@ import { baseModelProviders, configuredModelForHarness, loadConfig, providerKeys
 import { buildApp, stopWithBackstop } from "./wiring.ts";
 import { createServer } from "./api/server.ts";
 import { errMessage } from "./util/errors.ts";
-import { defaultModelForHarness, modelProviderAvailabilityFor } from "./model/pi-models.ts";
+import { defaultModelForHarness } from "./model/pi-models.ts";
 import { effectiveEgressEnforcement } from "./sandbox/sandbox.ts";
 import { slackPluginConfigFromEnv, startSlackPlugin } from "./slack/index.ts";
 import { createSlackRuntimeReconciler } from "./surfaces/slack-runtime.ts";
@@ -30,7 +30,6 @@ const server = createServer(built.app, {
     configuredModelForHarness(config, config.harness),
     baseModelProviders(config),
   ),
-  modelProviders: modelProviderAvailabilityFor(config.harness, providerKeysPresent(config)),
   providerKeys: providerKeysPresent(config),
   modelCredentials: built.modelCredentials,
   ...(config.brandingDefault ? { brandingDefault: config.brandingDefault } : {}),

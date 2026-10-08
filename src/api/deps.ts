@@ -78,7 +78,6 @@ export interface ServerDeps {
   brokerFetch?: BrokerFetch;
   gitHttpFetch?: GitHttpFetch;
   baseModelDefault?: string;
-  modelProviders?: ModelProviderAvailability;
   providerKeys?: ModelProviderAvailability;
   modelCredentials?: ModelCredentialStore;
   modelCredentialFetch?: typeof fetch;

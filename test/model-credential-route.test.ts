@@ -61,6 +61,7 @@ test("admin model credentials are encrypted, write-only, live, and removable", a
         { provider: "anthropic", configured: true, source: "environment" },
         { provider: "openai", configured: false, source: "absent" },
         { provider: "openrouter", configured: false, source: "absent" },
+        { provider: "google", configured: false, source: "absent" },
       ],
       models: [
         { id: "claude-fable-5", name: "Claude Fable 5", provider: "anthropic" },
@@ -72,6 +73,8 @@ test("admin model credentials are encrypted, write-only, live, and removable", a
         { id: "gpt-5.6-terra", name: "GPT-5.6 Terra", provider: "openai" },
         { id: "gpt-5.6-luna", name: "GPT-5.6 Luna", provider: "openai" },
         { id: "openrouter/auto", name: "OpenRouter Auto", provider: "openrouter" },
+        { id: "gemini-3.6-flash", name: "Gemini Flash 3.6", provider: "google" },
+        { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", provider: "google" },
       ],
     });
     const scopeBefore = await fetch(`${srv.base}/v1/admin/scopes/org%3Adefault-org`, { headers: ADMIN });
@@ -114,6 +117,89 @@ test("admin model credentials are encrypted, write-only, live, and removable", a
   } finally {
     await srv.close();
   }
+});
+
+test("a Google key saved in the admin console reaches the harness keys and exposes Gemini to the picker", async () => {
+  const srv = start();
+  const runtimeConfig = async () => {
+    const response = await fetch(`${srv.base}/v1/runtime-config?principalId=alice&scopeId=personal%3Aalice`);
+    assert.equal(response.status, 200);
+    return (await response.json()) as {
+      modelsByHarness: Record<string, string[]>;
+      modelCatalog: Record<string, { provider: string }>;
+    };
+  };
+  const selectGemini = () =>
+    fetch(`${srv.base}/v1/admin/scopes/org%3Adefault-org/runtime`, {
+      method: "PUT",
+      headers: ADMIN,
+      body: JSON.stringify({ harnessId: "pi", modelId: "gemini-3.6-flash" }),
+    });
+  try {
+    assert.deepEqual(await srv.built.modelCredentials.keys(), {});
+    assert.ok(!(await runtimeConfig()).modelsByHarness.pi!.includes("gemini-3.6-flash"));
+    assert.equal((await selectGemini()).status, 400);
+
+    const saved = await fetch(`${srv.base}/v1/admin/model-providers/google`, {
+      method: "PUT",
+      headers: ADMIN,
+      body: JSON.stringify({ apiKey: "admin-google-key" }),
+    });
+    assert.equal(saved.status, 200);
+    assert.deepEqual(await srv.built.modelCredentials.keys(), { google: "admin-google-key" });
+
+    const after = await runtimeConfig();
+    assert.ok(after.modelsByHarness.pi!.includes("gemini-3.6-flash"));
+    assert.equal(after.modelCatalog["gemini-3.6-flash"]?.provider, "google");
+    const scope = await fetch(`${srv.base}/v1/admin/scopes/org%3Adefault-org`, { headers: ADMIN });
+    assert.equal(scope.status, 200);
+    const options = ((await scope.json()) as { baseModelOptions: Array<{ id: string }> }).baseModelOptions;
+    assert.ok(options.some((model) => model.id === "gemini-3.6-flash"));
+    assert.equal((await selectGemini()).status, 200);
+    const selected = await srv.built.config.getRuntimeSelectionDurable("org:default-org");
+    assert.equal(selected?.harnessId, "pi");
+    assert.equal(selected?.modelId, "gemini-3.6-flash");
+  } finally {
+    await srv.close();
+  }
+});
+
+test("a deployment GEMINI_API_KEY reaches the harness keys like the other environment keys", async () => {
+  const srv = start({ anthropicApiKey: "deployment-anthropic-key", geminiApiKey: "deployment-google-key" });
+  try {
+    assert.deepEqual(await srv.built.modelCredentials.keys(), {
+      anthropic: "deployment-anthropic-key",
+      google: "deployment-google-key",
+    });
+  } finally {
+    await srv.close();
+  }
+});
+
+test("an admin key that no longer decrypts reads as unconfigured everywhere and yields to the environment", async () => {
+  const backing = createMemoryMap<StoredModelCredential>();
+  const writer = createModelCredentialStore({ backing, keyMaterial: "old-material-old-material-old-material" });
+  await writer.set("google", "rotated-away", "admin-alice");
+  const reader = createModelCredentialStore({
+    backing,
+    keyMaterial: "new-material-new-material-new-material",
+    fallback: { google: "env-google-key" },
+  });
+  assert.equal(await reader.resolve("google"), "env-google-key");
+  assert.deepEqual(await reader.keys(), { google: "env-google-key" });
+  assert.deepEqual(
+    (await reader.statuses()).find((status) => status.provider === "google"),
+    { provider: "google", configured: true, source: "environment" },
+  );
+  assert.equal((await reader.availability()).google, true);
+
+  const bare = createModelCredentialStore({ backing, keyMaterial: "new-material-new-material-new-material" });
+  assert.equal(await bare.resolve("google"), null);
+  assert.deepEqual(await bare.keys(), {});
+  const status = (await bare.statuses()).find((item) => item.provider === "google");
+  assert.equal(status?.configured, false);
+  assert.equal(status?.source, "admin");
+  assert.equal(status?.updatedBy, "admin-alice");
 });
 
 test("OpenRouter validation uses an authenticated endpoint", async () => {

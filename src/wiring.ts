@@ -239,7 +239,6 @@ import {
   auxiliaryModelFor,
   auxiliaryModelForProvider,
   defaultModelForHarness,
-  modelProviderAvailabilityFor,
   type HarnessId,
 } from "./model/pi-models.ts";
 import { createAdminService, bootAdminGrantSeed, type AdminService } from "./admin/admin-service.ts";
@@ -699,12 +698,7 @@ export function buildApp(
     console.error("[wiring] custom provider hydration failed:", errMessage(e)),
   );
   const resolveModelProviderKeys = async () => {
-    const [anthropic, openai, openrouter, enabledCustom] = await Promise.all([
-      modelCredentials.resolve("anthropic"),
-      modelCredentials.resolve("openai"),
-      modelCredentials.resolve("openrouter"),
-      customProviders.enabled(),
-    ]);
+    const [builtInKeys, enabledCustom] = await Promise.all([modelCredentials.keys(), customProviders.enabled()]);
     const customKeys = Object.fromEntries(
       (
         await Promise.all(
@@ -721,12 +715,7 @@ export function buildApp(
         )
       ).filter(([, key]) => key),
     );
-    return {
-      ...(anthropic ? { anthropic } : {}),
-      ...(openai ? { openai } : {}),
-      ...(openrouter ? { openrouter } : {}),
-      ...customKeys,
-    };
+    return { ...builtInKeys, ...customKeys };
   };
   const runtimeOrgScope = scopeId("org", config.orgId);
   const orgBaseModelId = (): string | undefined =>
@@ -1146,7 +1135,6 @@ export function buildApp(
     harnessId: config.harness,
     runtimeFallback: fallback,
     providerKeys,
-    modelProviders: modelProviderAvailabilityFor(config.harness, providerKeys),
     runWaitMs: config.runWaitMs,
   });
   const slackCore = createSlackCoreClient({

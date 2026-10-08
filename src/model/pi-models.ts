@@ -213,11 +213,10 @@ export function defaultModelForHarness(
   return servable?.id ?? preferred;
 }
 
-export interface ModelProviderAvailability {
-  anthropic: boolean;
-  openai: boolean;
-  openrouter: boolean;
-  google: boolean;
+export type ModelProviderAvailability = Record<ModelProvider, boolean>;
+
+function providerAvailabilityOf(available: boolean): ModelProviderAvailability {
+  return Object.fromEntries(MODEL_PROVIDERS.map((provider) => [provider, available])) as ModelProviderAvailability;
 }
 
 export function modelServiceable(id: string, providers: ModelProviderAvailability): boolean {
@@ -235,12 +234,8 @@ export function serviceableModelIds(ids: readonly string[], providers: ModelProv
   return ids.filter((id) => modelServiceable(id, providers));
 }
 
-export const ALL_PROVIDERS_AVAILABLE: ModelProviderAvailability = {
-  anthropic: true,
-  openai: true,
-  openrouter: true,
-  google: true,
-};
+export const ALL_PROVIDERS_AVAILABLE = providerAvailabilityOf(true);
+const NO_PROVIDERS_AVAILABLE = providerAvailabilityOf(false);
 
 export function modelProviderAvailabilityFor(
   harness: string,
@@ -254,7 +249,7 @@ export function modelProviderAvailabilityFor(
 }
 
 export function onlyProvider(provider: ModelProvider): ModelProviderAvailability {
-  return { anthropic: false, openai: false, openrouter: false, google: false, [provider]: true };
+  return { ...NO_PROVIDERS_AVAILABLE, [provider]: true };
 }
 
 export function defaultModelForProvider(harness: string, provider: ModelProvider): string | undefined {

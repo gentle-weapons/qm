@@ -5,17 +5,16 @@ import { ByteSourceTooLargeError } from "../../files/durable-byte-store.ts";
 import {
   defaultModelForHarness,
   isHarnessId,
-  modelProviderAvailabilityFor,
   modelServiceable,
   modelSupportedByHarness,
   resolveModel,
   serviceableModelIds,
-  ALL_PROVIDERS_AVAILABLE,
   FAST_MODE_MODEL_IDS,
   THINKING_LEVELS,
   type HarnessId,
   type ModelProviderAvailability,
 } from "../../model/pi-models.ts";
+import { providerAvailability } from "../provider-availability.ts";
 import { builtInModelCatalog, selectableCatalogForHarness, selectableModelCatalog } from "../../model/model-catalog.ts";
 import { errMessage } from "../../util/errors.ts";
 import { renderAgentApis } from "../agent-api-catalog.ts";
@@ -1006,7 +1005,7 @@ async function getSurfaceConfig(ctx: ApiCtx): Promise<void> {
     deps.config.getBrandingDurable(orgScope(deps)),
   ]);
   const harnessId = deps.harnessId ?? "pi";
-  const managedKeys = deps.modelCredentials ? await deps.modelCredentials.availability() : null;
+  const managedKeys = deps.modelCredentials ? (await providerAvailability(deps)).managed : null;
   const catalog = managedKeys?.openrouter
     ? await selectableModelCatalog(deps.modelCredentialFetch)
     : builtInModelCatalog();
@@ -1046,7 +1045,10 @@ async function getSurfaceConfig(ctx: ApiCtx): Promise<void> {
   });
 }
 
-function runtimeFallback(ctx: ApiCtx, providers?: ModelProviderAvailability): { harnessId: HarnessId; modelId: string } {
+function runtimeFallback(
+  ctx: ApiCtx,
+  providers?: ModelProviderAvailability,
+): { harnessId: HarnessId; modelId: string } {
   const harnessId = isHarnessId(ctx.deps.harnessId) ? ctx.deps.harnessId : "pi";
   return { harnessId, modelId: defaultModelForHarness(harnessId, ctx.deps.baseModelDefault, providers) };
 }
@@ -1071,9 +1073,9 @@ async function runtimeTarget(ctx: ApiCtx): Promise<{ actorId: string; scope: Sco
 
 async function runtimeConfigBody(ctx: ApiCtx, scope: ScopeId): Promise<Record<string, unknown>> {
   const config = ctx.deps.config!;
-  const configuredKeys = ctx.deps.providerKeys ?? ALL_PROVIDERS_AVAILABLE;
-  const managedKeys = ctx.deps.modelCredentials ? await ctx.deps.modelCredentials.availability() : configuredKeys;
-  const providersFor = (harnessId: string) => modelProviderAvailabilityFor(harnessId, configuredKeys, managedKeys);
+  const availability = await providerAvailability(ctx.deps);
+  const managedKeys = availability.managed;
+  const providersFor = availability.forHarness;
   const fallbackHarness = isHarnessId(ctx.deps.harnessId) ? ctx.deps.harnessId : "pi";
   const fallback = runtimeFallback(ctx, providersFor(fallbackHarness));
   const org = orgScope(ctx.deps);

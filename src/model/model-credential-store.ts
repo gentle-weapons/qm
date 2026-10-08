@@ -1,5 +1,6 @@
 import { decryptSecret, deriveConnectorKey, encryptSecret } from "../connectors/connector-client-store.ts";
 import type { DurableMap } from "../persistence/durable-map.ts";
+import { errMessage } from "../util/errors.ts";
 import { MODEL_PROVIDERS, type ModelProvider, type ModelProviderAvailability } from "./pi-models.ts";
 
 export interface StoredModelCredential {
@@ -24,6 +25,7 @@ export interface ModelCredentialStore {
   delete(provider: ModelProvider, updatedBy: string): Promise<void>;
   statuses(): Promise<ModelCredentialStatus[]>;
   availability(): Promise<ModelProviderAvailability>;
+  keys(): Promise<Partial<Record<ModelProvider, string>>>;
 }
 
 export function createModelCredentialStore(input: {
@@ -37,11 +39,27 @@ export function createModelCredentialStore(input: {
     return input.backing.get(provider);
   }
 
+  const reportedUnreadable = new Set<string>();
+
+  function adminSecret(saved: StoredModelCredential | null): string | null {
+    if (!saved?.secretEnc || saved.disabled) return null;
+    try {
+      return decryptSecret(saved.secretEnc, key);
+    } catch (error) {
+      const record = `${saved.provider}:${saved.updatedAt}`;
+      if (!reportedUnreadable.has(record)) {
+        reportedUnreadable.add(record);
+        console.error(`[model] provider ${saved.provider}: key unreadable: ${errMessage(error)}`);
+      }
+      return null;
+    }
+  }
+
   return {
     async resolve(provider) {
       const saved = await record(provider);
       if (saved?.disabled) return null;
-      return saved?.secretEnc ? decryptSecret(saved.secretEnc, key) : input.fallback?.[provider]?.trim() || null;
+      return adminSecret(saved) || input.fallback?.[provider]?.trim() || null;
     },
 
     async set(provider, apiKey, updatedBy) {
@@ -71,38 +89,33 @@ export function createModelCredentialStore(input: {
       return Promise.all(
         MODEL_PROVIDERS.map(async (provider): Promise<ModelCredentialStatus> => {
           const saved = await record(provider);
-          if (saved && !saved.disabled) {
-            return {
-              provider,
-              configured: true,
-              source: "admin",
-              updatedAt: saved.updatedAt,
-              updatedBy: saved.updatedBy,
-            };
-          }
-          if (saved?.disabled)
-            return {
-              provider,
-              configured: false,
-              source: "admin",
-              updatedAt: saved.updatedAt,
-              updatedBy: saved.updatedBy,
-            };
-          return input.fallback?.[provider]?.trim()
-            ? { provider, configured: true, source: "environment" }
-            : { provider, configured: false, source: "absent" };
+          const adminStatus = (configured: boolean): ModelCredentialStatus => ({
+            provider,
+            configured,
+            source: "admin",
+            updatedAt: saved!.updatedAt,
+            updatedBy: saved!.updatedBy,
+          });
+          if (saved && adminSecret(saved)) return adminStatus(true);
+          if (saved?.disabled) return adminStatus(false);
+          if (input.fallback?.[provider]?.trim()) return { provider, configured: true, source: "environment" };
+          return saved ? adminStatus(false) : { provider, configured: false, source: "absent" };
         }),
       );
     },
 
     async availability() {
       const statuses = await this.statuses();
-      return {
-        anthropic: statuses.find((status) => status.provider === "anthropic")!.configured,
-        openai: statuses.find((status) => status.provider === "openai")!.configured,
-        openrouter: statuses.find((status) => status.provider === "openrouter")!.configured,
-        google: statuses.find((status) => status.provider === "google")!.configured,
-      };
+      return Object.fromEntries(
+        statuses.map((status) => [status.provider, status.configured]),
+      ) as ModelProviderAvailability;
+    },
+
+    async keys() {
+      const resolved = await Promise.all(
+        MODEL_PROVIDERS.map(async (provider) => [provider, await this.resolve(provider)] as const),
+      );
+      return Object.fromEntries(resolved.filter(([, key]) => key)) as Partial<Record<ModelProvider, string>>;
     },
   };
 }

@@ -9,11 +9,10 @@ import {
   isHarnessId,
   modelSupportedByHarness,
   modelServiceable,
-  modelProviderAvailabilityFor,
   resolveModel,
   SELECTABLE_BASE_MODELS,
-  ALL_PROVIDERS_AVAILABLE,
 } from "../../model/pi-models.ts";
+import { providerAvailability } from "../provider-availability.ts";
 import { resolveRuntimeChoiceDurable } from "../../harness/harness-router.ts";
 import { type OrgBranding } from "../../resolution/config-store.ts";
 import {
@@ -357,10 +356,9 @@ export const ADMIN_RESOURCES: readonly AdminResource[] = [
         return { error: "base-model requires { modelId: string } (empty string clears the override)" };
       const modelId = typeof raw === "string" ? raw.trim() : "";
       if (modelId && !resolveModel(modelId)) return { error: `unknown model id: ${modelId}` };
-      const configuredKeys = ctx.deps.providerKeys ?? ALL_PROVIDERS_AVAILABLE;
-      const managedKeys = ctx.deps.modelCredentials ? await ctx.deps.modelCredentials.availability() : configuredKeys;
+      const availability = await providerAvailability(ctx.deps);
       const unserviceable = (harness: string): { error: string } | null =>
-        modelId && !modelServiceable(modelId, modelProviderAvailabilityFor(harness, configuredKeys, managedKeys))
+        modelId && !modelServiceable(modelId, availability.forHarness(harness))
           ? {
               error: `model ${modelId} isn't serviceable on this deployment: its provider key is not configured for the ${harness} harness`,
             }
@@ -407,8 +405,7 @@ export const ADMIN_RESOURCES: readonly AdminResource[] = [
       if (!approved.includes(harnessId)) return { error: `harness ${harnessId} is not approved` };
       if (typeof modelId !== "string" || !modelSupportedByHarness(modelId, harnessId))
         return { error: `model ${String(modelId)} is not supported by ${harnessId}` };
-      const runtimeKeys = ctx.deps.providerKeys ?? ALL_PROVIDERS_AVAILABLE;
-      if (!modelServiceable(modelId, modelProviderAvailabilityFor(harnessId, runtimeKeys)))
+      if (!modelServiceable(modelId, (await providerAvailability(ctx.deps)).forHarness(harnessId)))
         return {
           error: `model ${modelId} isn't serviceable on this deployment: its provider key is not configured for the ${harnessId} harness`,
         };
@@ -562,9 +559,7 @@ export const ADMIN_RESOURCES: readonly AdminResource[] = [
       }
       const modelId = typeof raw === "string" ? raw.trim() : "";
       if (modelId && !resolveModel(modelId)) return { error: `unknown model id: ${modelId}` };
-      const configuredKeys = ctx.deps.providerKeys ?? ALL_PROVIDERS_AVAILABLE;
-      const managedKeys = ctx.deps.modelCredentials ? await ctx.deps.modelCredentials.availability() : configuredKeys;
-      const providers = modelProviderAvailabilityFor(ctx.deps.harnessId ?? "pi", configuredKeys, managedKeys);
+      const providers = (await providerAvailability(ctx.deps)).forHarness(ctx.deps.harnessId ?? "pi");
       if (modelId && !modelServiceable(modelId, providers)) {
         return { error: `model ${modelId} isn't serviceable on this deployment: its provider key is not configured` };
       }

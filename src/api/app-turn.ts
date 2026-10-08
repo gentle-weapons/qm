@@ -7,15 +7,11 @@ import { resolveTurnOrigin } from "../core/turn-origin.ts";
 import { isTerminal, leaseLapsed } from "../runs/run-store.ts";
 import { turnModelOptions, validateWebTurnModelOptions, webTurnRuntimeModelRefusal } from "../core/turn-options.ts";
 import { isProjectGroupRef, projectIdFromGroupRef } from "../projects/project-store.ts";
-import {
-  defaultModelForHarness,
-  isHarnessId,
-  modelProviderAvailabilityFor,
-  modelServiceable,
-} from "../model/pi-models.ts";
+import { defaultModelForHarness, isHarnessId, modelServiceable } from "../model/pi-models.ts";
 import { selectableCatalogForHarness, selectableModelCatalog } from "../model/model-catalog.ts";
 import { resolveRuntimeChoiceDurable } from "../harness/harness-router.ts";
 import { errMessage } from "../util/errors.ts";
+import { providerAvailability } from "./provider-availability.ts";
 
 import type { App, AppDeps } from "./app-types.ts";
 import { STALE_LEASE_GRACE_MS } from "./app-types.ts";
@@ -125,21 +121,10 @@ export function createTurnMethods(
             ? scopeId("personal", actor.id)
             : scopeId(req.conversation.kind, req.conversation.channelRef ?? threadRef);
         const fallbackHarness = isHarnessId(deps.harnessId) ? deps.harnessId : "pi";
-        const configuredKeys = deps.providerKeys ??
-          deps.modelProviders ?? { anthropic: false, openai: false, openrouter: false, google: false };
-        let providers = deps.modelProviders;
-        if (deps.modelCredentials) {
-          providers = modelProviderAvailabilityFor(
-            fallbackHarness,
-            configuredKeys,
-            await deps.modelCredentials.availability(),
-          );
-        } else if (deps.providerKeys) {
-          providers = modelProviderAvailabilityFor(fallbackHarness, configuredKeys);
-        }
+        const availability = await providerAvailability(deps);
         const runtimeFallback = deps.runtimeFallback ?? {
           harnessId: fallbackHarness,
-          modelId: defaultModelForHarness(fallbackHarness, undefined, providers),
+          modelId: defaultModelForHarness(fallbackHarness, undefined, availability.forHarness(fallbackHarness)),
         };
         let orgRuntime;
         let configuredRuntime;
@@ -163,7 +148,8 @@ export function createTurnMethods(
         if (req.harness && !isHarnessId(req.harness)) {
           return { status: "refused", reason: `runtime ${req.harness} is not approved` };
         }
-        if (providers && !modelServiceable(runtime.modelId, providers)) {
+        const providers = availability.forHarness(runtime.harnessId);
+        if (!modelServiceable(runtime.modelId, providers)) {
           return {
             status: "refused",
             reason: "that model isn't available on this deployment (its provider isn't configured)",
@@ -173,7 +159,7 @@ export function createTurnMethods(
         let enabledWebuiModels: string[] | null = null;
         if (configuredWebuiModels?.length) {
           enabledWebuiModels = [...new Set([...configuredWebuiModels, orgRuntime.modelId])];
-        } else if (providers?.openrouter) {
+        } else if (deps.modelCredentials && availability.managed.openrouter) {
           enabledWebuiModels = [
             ...new Set([
               ...selectableCatalogForHarness(

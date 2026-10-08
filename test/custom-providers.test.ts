@@ -69,7 +69,10 @@ test("custom models are gated to pi and mock harnesses", () => {
 
 test("a registered custom model is serviceable regardless of built-in key availability", () => {
   setCustomProviders([GATEWAY]);
-  assert.equal(modelServiceable("acme-large", { anthropic: false, openai: false, openrouter: false, google: false }), true);
+  assert.equal(
+    modelServiceable("acme-large", { anthropic: false, openai: false, openrouter: false, google: false }),
+    true,
+  );
 });
 
 test("catalog lists custom models; clearing the registry removes them", () => {
@@ -139,6 +142,11 @@ test("registered models surface in the catalog and vanish on unregister", () => 
   const entry = catalog.find((m) => m.id === "deepseek-chat");
   assert.ok(entry, "custom model appears in the catalog");
   assert.equal(entry!.provider, "deepseek");
+  assert.deepEqual(
+    catalog.filter((m) => m.provider === "google").map((m) => m.id),
+    ["gemini-3.6-flash", "gemini-2.0-flash"],
+    "built-in Google models are selectable alongside the other built-in providers",
+  );
   setCustomProviders([]);
   assert.ok(!builtInModelCatalog().some((m) => m.id === "deepseek-chat"));
 });

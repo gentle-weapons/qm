@@ -2,14 +2,14 @@ import { parseScopeId } from "../../../types.ts";
 import { encodeRef, serviceCredRef } from "../../../acl/resource-ref.ts";
 import { computeRetention } from "../../../admin/retention.ts";
 import {
-  HARNESS_IDS,
-  SELECTABLE_BASE_MODELS,
   defaultModelForHarness,
-  modelProviderAvailabilityFor,
+  HARNESS_IDS,
+  isModelProvider,
   modelServiceable,
-  ALL_PROVIDERS_AVAILABLE,
   resolveModel,
+  SELECTABLE_BASE_MODELS,
 } from "../../../model/pi-models.ts";
+import { providerAvailability } from "../../provider-availability.ts";
 import {
   builtInModelCatalog,
   selectableCatalogForHarness,
@@ -237,9 +237,9 @@ export async function getScopeConfig(ctx: ApiCtx): Promise<void> {
   effectiveEgressPolicy.allowedHosts = [
     ...new Set([...(orgEgress?.allowedHosts ?? []), ...(targetEgress?.allowedHosts ?? [])]),
   ].filter((host) => !isHostDenied(host, effectiveEgressPolicy.deniedHosts));
-  const configuredKeys = deps.providerKeys ?? ALL_PROVIDERS_AVAILABLE;
-  const managedKeys = deps.modelCredentials ? await deps.modelCredentials.availability() : configuredKeys;
-  const providersFor = (harnessId: string) => modelProviderAvailabilityFor(harnessId, configuredKeys, managedKeys);
+  const availability = await providerAvailability(deps);
+  const managedKeys = availability.managed;
+  const providersFor = availability.forHarness;
   const catalog =
     deps.modelCredentials && managedKeys.openrouter
       ? await selectableModelCatalog(deps.modelCredentialFetch)
@@ -248,9 +248,7 @@ export async function getScopeConfig(ctx: ApiCtx): Promise<void> {
   const resolvedCurrent = runtime && typeof runtime.modelId === "string" ? resolveModel(runtime.modelId) : null;
   const currentProvider = resolvedCurrent?.provider;
   const currentModel =
-    runtime &&
-    typeof runtime.modelId === "string" &&
-    (currentProvider === "anthropic" || currentProvider === "openai" || currentProvider === "openrouter")
+    runtime && typeof runtime.modelId === "string" && isModelProvider(currentProvider)
       ? ({ id: runtime.modelId, name: resolvedCurrent!.name, provider: currentProvider } satisfies ModelCatalogEntry)
       : null;
   const modelsFor = (harnessId: string) => {
