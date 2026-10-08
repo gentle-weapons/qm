@@ -78,12 +78,12 @@ push to `main` and supports manual dispatch. Configure repository secrets:
 
 `deploy/layers/gw/ecosystem.config.cjs` runs:
 
-| Process | Port | Role |
-|---------|------|------|
-| qm-core | 3000 | API + Slack |
-| qm-worker | — | background queue |
-| qm-web-ui | 3001 | web surface |
-| qm-admin | 3002 | admin surface |
+| Process   | Port | Role             |
+| --------- | ---- | ---------------- |
+| qm-core   | 3000 | API + Slack      |
+| qm-worker | —    | background queue |
+| qm-web-ui | 3001 | web surface      |
+| qm-admin  | 3002 | admin surface    |
 | qm-portal | 8080 | Caddy front door |
 
 Caddy on the VM terminates TLS and reverse-proxies to port 8080.
