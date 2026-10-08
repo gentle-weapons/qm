@@ -147,14 +147,7 @@ test("unknown ids are dropped; an all-unknown list falls back to the built-in se
   applyPickerModelIds(["nope-1", "nope-2"]);
   assert.deepEqual(
     getModelOptions().map((o) => o.value),
-    [
-      "gemini-3.6-flash",
-      "claude-opus-5",
-      "claude-opus-4-8",
-      "claude-sonnet-5",
-      "claude-haiku-4-5",
-      "gemini-2.0-flash",
-    ],
+    ["gemini-3.6-flash", "claude-opus-5", "claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5", "gemini-2.0-flash"],
   );
 });
 

@@ -2051,7 +2051,12 @@ export function createPiTools(ref: ToolContextRef, opts?: PiToolsOptions): ToolD
             );
           }
           const hasExecutionInStep = (ref.stepToolNames ?? []).some(
-            (name) => name !== surfaceName && name !== "surface" && name !== "slack" && name !== "stay_silent" && name !== "finish_silently",
+            (name) =>
+              name !== surfaceName &&
+              name !== "surface" &&
+              name !== "slack" &&
+              name !== "stay_silent" &&
+              name !== "finish_silently",
           );
           if (hasExecutionInStep) {
             return recordResult(

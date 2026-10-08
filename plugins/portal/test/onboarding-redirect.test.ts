@@ -30,6 +30,7 @@ process.env.CORE_SIGNING_SECRET = "onboarding-test-core-secret";
 process.env.WEB_UI_UPSTREAM = upstreamUrl;
 process.env.ADMIN_UPSTREAM = upstreamUrl;
 process.env.CORE_API_URL = upstreamUrl;
+process.env.CORE_ORG_ID = "acme";
 
 const { server } = await import("../src/index.ts");
 const { deriveKey, seal } = await import("../src/session.ts");

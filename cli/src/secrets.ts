@@ -54,6 +54,13 @@ export const FIRST_PARTY_SECRET_SPECS: readonly SecretSpec[] = [
       'OpenRouter API key: bills the base model when modelProvider is "openrouter", an optional deployment fallback otherwise.',
   },
   {
+    name: "GEMINI_API_KEY",
+    service: "core",
+    required: { when: { kind: "model-provider", provider: "google" }, optionalOtherwise: true },
+    description:
+      'Gemini API key: bills the base model when modelProvider is "google", an optional deployment fallback otherwise.',
+  },
+  {
     name: "OPENAI_API_KEY",
     service: "core",
     required: {

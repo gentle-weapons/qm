@@ -227,6 +227,10 @@ const MODEL_PROVIDER_PROBES: Readonly<
   },
   openai: { url: "https://api.openai.com/v1/models", headers: (key) => ({ authorization: `Bearer ${key}` }) },
   openrouter: { url: "https://openrouter.ai/api/v1/key", headers: (key) => ({ authorization: `Bearer ${key}` }) },
+  google: {
+    url: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1",
+    headers: (key) => ({ "x-goog-api-key": key }),
+  },
 };
 
 async function modelProviderCheck(provider: ModelProvider, apiKey: string): Promise<void> {
@@ -239,7 +243,7 @@ async function modelProviderCheck(provider: ModelProvider, apiKey: string): Prom
       `could not reach the ${provider} API: ${errMessage(e)} — check network access (and any proxy) and retry`,
     );
   }
-  if (res.status === 401 || res.status === 403) {
+  if (res.status === 400 || res.status === 401 || res.status === 403) {
     throw new CliError(
       `${provider} rejected ${MODEL_PROVIDER_KEYS[provider]} — the deployment would start but could not serve a single agent turn`,
     );

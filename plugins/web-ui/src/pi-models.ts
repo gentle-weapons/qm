@@ -1,7 +1,5 @@
-import { getBuiltinModel } from "@earendil-works/pi-ai/providers/all";
+import { getModel } from "@earendil-works/pi-ai";
 import type { Api, Model } from "@earendil-works/pi-ai";
-
-const getModel = getBuiltinModel as unknown as (provider: string, id: string) => Model<Api> | undefined;
 
 const KNOWN_PROVIDERS = ["anthropic", "openai", "openrouter", "google"] as const;
 

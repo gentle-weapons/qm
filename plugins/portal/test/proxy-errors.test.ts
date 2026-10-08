@@ -43,6 +43,7 @@ process.env.PORTAL_DEPLOYMENTS_ENABLED = "1";
 process.env.WEB_UI_UPSTREAM = upstreamUrl;
 process.env.ADMIN_UPSTREAM = upstreamUrl;
 process.env.CORE_API_URL = upstreamUrl;
+process.env.CORE_ORG_ID = "acme";
 
 const { server, consumeState, consumedStates } = await import("../src/index.ts");
 const { deriveKey, seal } = await import("../src/session.ts");

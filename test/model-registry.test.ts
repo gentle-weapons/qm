@@ -65,12 +65,15 @@ test("provider-key gating applies only to key-authed harnesses (no over-hiding o
   const noKeys = { anthropic: false, openai: false, openrouter: false, google: false };
   assert.deepEqual(modelProviderAvailabilityFor("pi", noKeys), noKeys);
   assert.deepEqual(modelProviderAvailabilityFor("opencode", noKeys), noKeys);
-  assert.deepEqual(modelProviderAvailabilityFor("pi", noKeys, { anthropic: false, openai: true, openrouter: true, google: false }), {
-    anthropic: false,
-    openai: true,
-    openrouter: true,
-    google: false,
-  });
+  assert.deepEqual(
+    modelProviderAvailabilityFor("pi", noKeys, { anthropic: false, openai: true, openrouter: true, google: false }),
+    {
+      anthropic: false,
+      openai: true,
+      openrouter: true,
+      google: false,
+    },
+  );
   assert.deepEqual(
     modelProviderAvailabilityFor(
       "opencode",
@@ -80,14 +83,27 @@ test("provider-key gating applies only to key-authed harnesses (no over-hiding o
     { anthropic: true, openai: true, openrouter: false, google: true },
   );
   assert.deepEqual(modelProviderAvailabilityFor("codex", noKeys), noKeys);
-  assert.deepEqual(modelProviderAvailabilityFor("codex", { anthropic: false, openai: true, openrouter: false, google: false }), {
-    anthropic: false,
+  assert.deepEqual(
+    modelProviderAvailabilityFor("codex", { anthropic: false, openai: true, openrouter: false, google: false }),
+    {
+      anthropic: false,
+      openai: true,
+      openrouter: false,
+      google: false,
+    },
+  );
+  assert.deepEqual(modelProviderAvailabilityFor("claude", noKeys), {
+    anthropic: true,
     openai: true,
-    openrouter: false,
-    google: false,
+    openrouter: true,
+    google: true,
   });
-  assert.deepEqual(modelProviderAvailabilityFor("claude", noKeys), { anthropic: true, openai: true, openrouter: true, google: true });
-  assert.deepEqual(modelProviderAvailabilityFor("mock", noKeys), { anthropic: true, openai: true, openrouter: true, google: true });
+  assert.deepEqual(modelProviderAvailabilityFor("mock", noKeys), {
+    anthropic: true,
+    openai: true,
+    openrouter: true,
+    google: true,
+  });
 });
 
 test("web-turn gate refuses a keyless model cleanly, accepts it once the provider is configured", () => {
@@ -95,7 +111,12 @@ test("web-turn gate refuses a keyless model cleanly, accepts it once the provide
   const refused = validateWebTurnModelOptions({ model: "gpt-5.6-sol" }, null, noOpenai);
   assert.match(refused ?? "", /provider isn't configured/);
   assert.equal(
-    validateWebTurnModelOptions({ model: "gpt-5.6-sol" }, null, { anthropic: true, openai: true, openrouter: false, google: false }),
+    validateWebTurnModelOptions({ model: "gpt-5.6-sol" }, null, {
+      anthropic: true,
+      openai: true,
+      openrouter: false,
+      google: false,
+    }),
     null,
   );
 });

@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileS
 import { basename, join } from "node:path";
 import { die, note, ok } from "../log.ts";
 import { envNum, gitTopLevel, spawnBackground, stopPid, tail, waitForLog, which } from "../util.ts";
+import { MODEL_PROVIDER_KEYS } from "../config.ts";
 import { serviceDef } from "../services.ts";
 
 const ciDir = (root: string): string => join(root, process.env.CI_INSTANCE_DIR ?? ".ci-instance");
@@ -35,9 +36,10 @@ function requireEnv(): void {
   if (process.env.SLACK_EVENTS_MODE === "http") {
     if (!process.env.SLACK_SIGNING_SECRET) die("SLACK_SIGNING_SECRET required in http events mode");
   } else if (!app.startsWith("xapp-")) die("SLACK_APP_TOKEN (xapp-…) required");
-  if (!process.env.ANTHROPIC_API_KEY && !process.env.OPENAI_API_KEY && !process.env.OPENROUTER_API_KEY) {
+  const providerKeys = Object.values(MODEL_PROVIDER_KEYS);
+  if (!providerKeys.some((name) => process.env[name])) {
     die(
-      "a model provider key required (ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY — live turns are the point of this instance)",
+      `a model provider key required (one of ${providerKeys.join(", ")} — live turns are the point of this instance)`,
     );
   }
   if (!process.env.CORE_SIGNING_SECRET) die("CORE_SIGNING_SECRET required");

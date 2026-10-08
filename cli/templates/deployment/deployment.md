@@ -69,7 +69,7 @@ npm install
 lands in the deployment repository and its lockfile rather than in the command
 that bootstraps it.
 
-`--model-provider` takes `anthropic`, `openai`, or `openrouter` and defaults to
+`--model-provider` takes `anthropic`, `openai`, `openrouter`, or `google` and defaults to
 `anthropic`. It writes `modelProvider` into the scaffolded config, which is what
 promotes that provider's key from an optional fallback to a required secret.
 
@@ -174,8 +174,8 @@ mint limits, the boot refusals, and what anonymous visitors are denied.
 
 Whichever sign-in route the deployment takes, the base model needs a key in the
 same pass. `modelProvider` decides which one `qm setup` asks for —
-`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `OPENROUTER_API_KEY` — and the wizard
-prints where to mint it. The operator owns the billing relationship, so they
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, or `GEMINI_API_KEY` — and the
+wizard prints where to mint it. The operator owns the billing relationship, so they
 create the key; you only place it. It is a required secret, so `qm doctor` calls
 the provider to prove the key is accepted and `qm up` refuses a deployment that
 has none. Treat a rejected key exactly like a rejected sign-in credential: stop
@@ -184,11 +184,12 @@ administrator and then fails their first message.
 
 `modelProvider` also picks the model itself, so no model id has to be chosen at
 deploy time: Anthropic serves `claude-opus-5`, OpenAI `gpt-5.6-sol`, OpenRouter
-`openrouter/auto`. Set `model` in `qm.config.jsonc` only to override that, and
-only with a model the chosen provider can bill — a mismatch is refused at
+`openrouter/auto`, Google `gemini-3.6-flash`. Set `model` in `qm.config.jsonc` only to
+override that, and only with a model the chosen provider can bill — a mismatch is refused at
 startup rather than at the first message. The same rule covers the harness:
 `HARNESS` `codex` runs OpenAI models alone, `claude` runs Anthropic models
-alone, and `openrouter` needs the default `pi` harness.
+alone, `openrouter` needs the default `pi` harness, and `google` needs `pi` or
+`opencode`.
 
 An operator may still prefer to hold the key centrally and rotate it from the
 Admin page. That is a deliberate choice, not the default: drop `modelProvider`

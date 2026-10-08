@@ -40,6 +40,7 @@ process.env.CORE_SIGNING_SECRET = "playground-test-core-secret";
 process.env.WEB_UI_UPSTREAM = upstreamUrl;
 process.env.ADMIN_UPSTREAM = upstreamUrl;
 process.env.CORE_API_URL = upstreamUrl;
+process.env.CORE_ORG_ID = "acme";
 process.env.PORTAL_PLAYGROUND = "1";
 process.env.PORTAL_PLAYGROUND_MINTS_PER_IP = "3";
 delete process.env.PORTAL_LOCAL_AUTH_BYPASS;

@@ -21,6 +21,7 @@ await new Promise<void>((r) => core.listen(0, r));
 const corePort = (core.address() as AddressInfo).port;
 
 process.env.CORE_API_URL = `http://localhost:${corePort}`;
+process.env.CORE_ORG_ID = "acme";
 process.env.CORE_SIGNING_SECRET = "admin-scopes-proxy-secret";
 
 const { server } = await import("../src/index.ts");
