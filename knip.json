@@ -23,7 +23,8 @@
         "scripts/migrate-principals-to-email.mjs",
         "scripts/mine-slack-scenarios.ts",
         "scripts/skills-materialize-smoke.ts",
-        "scripts/slack-user-token.ts"
+        "scripts/slack-user-token.ts",
+        "deploy/layers/gw/ecosystem.config.cjs"
       ]
     },
     "cli": { "entry": ["bin/qm.ts"] },

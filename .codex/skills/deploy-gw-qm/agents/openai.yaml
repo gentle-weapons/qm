@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deploy GW QM"
+  short_description: "Deploy qm to Gentle Weapons GCP"
+  default_prompt: "Use $deploy-gw-qm to deploy this repository to Gentle Weapons GCP production."
